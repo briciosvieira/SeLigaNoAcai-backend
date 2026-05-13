@@ -1,0 +1,597 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AuthProvider {
+  GOOGLE
+  GUEST
+  MANUAL
+}
+
+enum ProductType {
+  SIMPLE
+  CUSTOM
+  COMBO
+}
+
+enum SelectionType {
+  SINGLE
+  MULTIPLE
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_ONLINE
+  CARD_ON_DELIVERY
+  CASH_ON_DELIVERY
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+enum OrderStatus {
+  CREATED
+  AWAITING_PAYMENT
+  PAID
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELED
+}
+
+enum OrderSource {
+  SITE
+  WHATSAPP
+  IFOOD
+  ADMIN
+}
+
+enum LoyaltyTransactionType {
+  STAMP_EARNED
+  REWARD_GRANTED
+  REWARD_REDEEMED
+  ADJUSTMENT
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Store {
+  id String @id @default(uuid())
+
+  name String @db.VarChar(120)
+  slug String @unique @db.VarChar(120)
+
+  logoUrl        String? @map("logo_url")
+  whatsappNumber String? @map("whatsapp_number") @db.VarChar(30)
+  ifoodUrl       String? @map("ifood_url")
+
+  pixKey     String? @map("pix_key") @db.VarChar(180)
+  pixKeyType String? @map("pix_key_type") @db.VarChar(40)
+
+  rating             Decimal? @db.Decimal(3, 2)
+  minDeliveryMinutes Int?     @map("min_delivery_minutes")
+  maxDeliveryMinutes Int?     @map("max_delivery_minutes")
+
+  minimumOrderAmount Decimal @default(0) @map("minimum_order_amount") @db.Decimal(10, 2)
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  deliveryZones   DeliveryZone[]
+  categories      Category[]
+  products        Product[]
+  optionGroups    OptionGroup[]
+  orders          Order[]
+  loyaltyPrograms LoyaltyProgram[]
+
+  @@map("stores")
+}
+
+model DeliveryZone {
+  id String @id @default(uuid())
+
+  storeId String @map("store_id")
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  neighborhood String @db.VarChar(120)
+  city         String @default("Salvador") @db.VarChar(120)
+  state        String @default("BA") @db.VarChar(2)
+
+  deliveryFee Decimal @default(0) @map("delivery_fee") @db.Decimal(10, 2)
+
+  isAvailable Boolean @default(true) @map("is_available")
+  displayOrder Int     @default(0) @map("display_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  addresses CustomerAddress[]
+  orders    Order[]
+
+  @@unique([storeId, neighborhood, city, state])
+  @@map("delivery_zones")
+}
+
+model Customer {
+  id String @id @default(uuid())
+
+  customerCode String? @unique @map("customer_code") @db.VarChar(7)
+
+  fullName String? @map("full_name") @db.VarChar(160)
+  email    String? @unique
+  phone    String? @db.VarChar(30)
+  cpf      String? @unique @db.VarChar(20)
+
+  authProvider   AuthProvider @default(GUEST) @map("auth_provider")
+  authProviderId String?      @map("auth_provider_id") @db.VarChar(180)
+
+  isGuest  Boolean @default(true) @map("is_guest")
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  addresses         CustomerAddress[]
+  orders            Order[]
+  customerLoyalties CustomerLoyalty[]
+  notificationLogs  NotificationLog[]
+
+  @@unique([authProvider, authProviderId])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id String @id @default(uuid())
+
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  deliveryZoneId String?       @map("delivery_zone_id")
+  deliveryZone   DeliveryZone? @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
+
+  label          String? @db.VarChar(60)
+  street         String? @db.VarChar(180)
+  number         String? @db.VarChar(30)
+  complement     String? @db.VarChar(120)
+  referencePoint String? @map("reference_point") @db.VarChar(180)
+
+  neighborhood String? @db.VarChar(120)
+  city         String? @default("Salvador") @db.VarChar(120)
+  state        String? @default("BA") @db.VarChar(2)
+
+  isDefault Boolean @default(false) @map("is_default")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("customer_addresses")
+}
+
+model Category {
+  id String @id @default(uuid())
+
+  storeId String @map("store_id")
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  name String @db.VarChar(100)
+  slug String @db.VarChar(100)
+
+  displayOrder Int     @default(0) @map("display_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  products Product[]
+
+  @@unique([storeId, slug])
+  @@map("categories")
+}
+
+model Product {
+  id String @id @default(uuid())
+
+  storeId String @map("store_id")
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  categoryId String?   @map("category_id")
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  name        String  @db.VarChar(140)
+  slug        String  @db.VarChar(140)
+  description String?
+
+  emoji    String? @db.VarChar(20)
+  imageUrl String? @map("image_url")
+
+  basePrice Decimal  @default(0) @map("base_price") @db.Decimal(10, 2)
+  oldPrice  Decimal? @map("old_price") @db.Decimal(10, 2)
+
+  badge String? @db.VarChar(40)
+
+  productType ProductType @default(SIMPLE) @map("product_type")
+
+  isFeatured Boolean @default(false) @map("is_featured")
+  isOffer    Boolean @default(false) @map("is_offer")
+  isActive   Boolean @default(true) @map("is_active")
+
+  displayOrder Int @default(0) @map("display_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  variants            ProductVariant[]
+  productOptionGroups ProductOptionGroup[]
+  orderItems          OrderItem[]
+
+  @@unique([storeId, slug])
+  @@map("products")
+}
+
+model ProductVariant {
+  id String @id @default(uuid())
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  name  String  @db.VarChar(80)
+  price Decimal @db.Decimal(10, 2)
+
+  isDefault Boolean @default(false) @map("is_default")
+  isActive  Boolean @default(true) @map("is_active")
+
+  displayOrder Int @default(0) @map("display_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  orderItems OrderItem[]
+
+  @@unique([productId, name])
+  @@map("product_variants")
+}
+
+model OptionGroup {
+  id String @id @default(uuid())
+
+  storeId String @map("store_id")
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  name String @db.VarChar(100)
+  slug String @db.VarChar(100)
+
+  selectionType SelectionType @map("selection_type")
+  minSelected   Int           @default(0) @map("min_selected")
+  maxSelected   Int?          @map("max_selected")
+
+  isRequired Boolean @default(false) @map("is_required")
+  isActive   Boolean @default(true) @map("is_active")
+
+  displayOrder Int @default(0) @map("display_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  options             Option[]
+  productOptionGroups ProductOptionGroup[]
+  orderItemOptions    OrderItemOption[]
+
+  @@unique([storeId, slug])
+  @@map("option_groups")
+}
+
+model Option {
+  id String @id @default(uuid())
+
+  optionGroupId String      @map("option_group_id")
+  optionGroup   OptionGroup @relation(fields: [optionGroupId], references: [id], onDelete: Cascade)
+
+  name        String  @db.VarChar(100)
+  description String?
+  emoji       String? @db.VarChar(20)
+
+  additionalPrice Decimal @default(0) @map("additional_price") @db.Decimal(10, 2)
+
+  isActive     Boolean @default(true) @map("is_active")
+  displayOrder Int     @default(0) @map("display_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  orderItemOptions OrderItemOption[]
+
+  @@unique([optionGroupId, name])
+  @@map("options")
+}
+
+model ProductOptionGroup {
+  id String @id @default(uuid())
+
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  optionGroupId String      @map("option_group_id")
+  optionGroup   OptionGroup @relation(fields: [optionGroupId], references: [id], onDelete: Cascade)
+
+  minSelected Int?     @map("min_selected")
+  maxSelected Int?     @map("max_selected")
+  isRequired  Boolean? @map("is_required")
+
+  displayOrder Int @default(0) @map("display_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([productId, optionGroupId])
+  @@map("product_option_groups")
+}
+
+model Order {
+  id String @id @default(uuid())
+
+  storeId String @map("store_id")
+  store   Store  @relation(fields: [storeId], references: [id])
+
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  customerAddressId String?          @map("customer_address_id")
+  customerAddress   CustomerAddress? @relation(fields: [customerAddressId], references: [id], onDelete: SetNull)
+
+  deliveryZoneId String?       @map("delivery_zone_id")
+  deliveryZone   DeliveryZone? @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
+
+  orderNumber String @unique @map("order_number") @db.VarChar(30)
+
+  customerName  String? @map("customer_name") @db.VarChar(160)
+  customerPhone String? @map("customer_phone") @db.VarChar(30)
+  customerEmail String? @map("customer_email")
+
+  deliveryNeighborhood String? @map("delivery_neighborhood") @db.VarChar(120)
+  deliveryAddressText  String? @map("delivery_address_text")
+
+  subtotalAmount Decimal @default(0) @map("subtotal_amount") @db.Decimal(10, 2)
+  deliveryFee    Decimal @default(0) @map("delivery_fee") @db.Decimal(10, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  totalAmount    Decimal @default(0) @map("total_amount") @db.Decimal(10, 2)
+
+  paymentMethod PaymentMethod @map("payment_method")
+  paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
+
+  orderStatus OrderStatus @default(CREATED) @map("order_status")
+
+  changeForAmount Decimal? @map("change_for_amount") @db.Decimal(10, 2)
+  notes           String?
+
+  whatsappMessage String?     @map("whatsapp_message")
+  source          OrderSource @default(SITE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  items         OrderItem[]
+  payments      Payment[]
+  statusHistory OrderStatusHistory[]
+  loyaltyLogs   LoyaltyTransaction[]
+  notifications NotificationLog[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id String @id @default(uuid())
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String?  @map("product_id")
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  productVariantId String?         @map("product_variant_id")
+  productVariant   ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
+
+  productName String  @map("product_name") @db.VarChar(140)
+  variantName String? @map("variant_name") @db.VarChar(80)
+
+  quantity Int @default(1)
+
+  unitPrice     Decimal @map("unit_price") @db.Decimal(10, 2)
+  optionsAmount Decimal @default(0) @map("options_amount") @db.Decimal(10, 2)
+  totalAmount   Decimal @map("total_amount") @db.Decimal(10, 2)
+
+  itemDescription String? @map("item_description")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  options OrderItemOption[]
+
+  @@map("order_items")
+}
+
+model OrderItemOption {
+  id String @id @default(uuid())
+
+  orderItemId String    @map("order_item_id")
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  optionGroupId String?      @map("option_group_id")
+  optionGroup   OptionGroup? @relation(fields: [optionGroupId], references: [id], onDelete: SetNull)
+
+  optionId String? @map("option_id")
+  option   Option? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+
+  groupName String @map("group_name") @db.VarChar(100)
+  optionName String @map("option_name") @db.VarChar(100)
+
+  additionalPrice Decimal @default(0) @map("additional_price") @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("order_item_options")
+}
+
+model Payment {
+  id String @id @default(uuid())
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  paymentMethod PaymentMethod @map("payment_method")
+  status        PaymentStatus @default(PENDING)
+
+  amount Decimal @db.Decimal(10, 2)
+
+  provider          String? @db.VarChar(60)
+  providerPaymentId String? @map("provider_payment_id") @db.VarChar(180)
+
+  pixQrCode    String?   @map("pix_qr_code")
+  pixCopyPaste String?   @map("pix_copy_paste")
+  pixExpiresAt DateTime? @map("pix_expires_at")
+
+  installments  Int?
+  cardBrand     String? @map("card_brand") @db.VarChar(40)
+  cardLastDigits String? @map("card_last_digits") @db.VarChar(4)
+
+  paidAt       DateTime? @map("paid_at")
+  failedReason String?   @map("failed_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("payments")
+}
+
+model OrderStatusHistory {
+  id String @id @default(uuid())
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  oldStatus OrderStatus? @map("old_status")
+  newStatus OrderStatus  @map("new_status")
+
+  description String?
+  createdBy   String? @map("created_by") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("order_status_history")
+}
+
+model LoyaltyProgram {
+  id String @id @default(uuid())
+
+  storeId String @map("store_id")
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  name String @db.VarChar(120)
+
+  purchasesRequired  Int     @default(10) @map("purchases_required")
+  minimumOrderAmount Decimal @default(16.00) @map("minimum_order_amount") @db.Decimal(10, 2)
+
+  rewardDescription String? @map("reward_description")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customerLoyalties CustomerLoyalty[]
+
+  @@map("loyalty_programs")
+}
+
+model CustomerLoyalty {
+  id String @id @default(uuid())
+
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  loyaltyProgramId String         @map("loyalty_program_id")
+  loyaltyProgram   LoyaltyProgram @relation(fields: [loyaltyProgramId], references: [id], onDelete: Cascade)
+
+  currentStamps   Int @default(0) @map("current_stamps")
+  totalStamps     Int @default(0) @map("total_stamps")
+  rewardsAvailable Int @default(0) @map("rewards_available")
+  rewardsRedeemed Int @default(0) @map("rewards_redeemed")
+
+  lastStampAt DateTime? @map("last_stamp_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  transactions LoyaltyTransaction[]
+
+  @@unique([customerId, loyaltyProgramId])
+  @@map("customer_loyalty")
+}
+
+model LoyaltyTransaction {
+  id String @id @default(uuid())
+
+  customerLoyaltyId String          @map("customer_loyalty_id")
+  customerLoyalty   CustomerLoyalty @relation(fields: [customerLoyaltyId], references: [id], onDelete: Cascade)
+
+  orderId String? @map("order_id")
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  transactionType LoyaltyTransactionType @map("transaction_type")
+  quantity        Int
+
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("loyalty_transactions")
+}
+
+model NotificationLog {
+  id String @id @default(uuid())
+
+  orderId String? @map("order_id")
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  channel   NotificationChannel
+  recipient String? @db.VarChar(120)
+  message   String?
+
+  status NotificationStatus @default(PENDING)
+
+  sentAt       DateTime? @map("sent_at")
+  errorMessage String?   @map("error_message")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notification_logs")
+}
