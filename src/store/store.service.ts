@@ -16,9 +16,9 @@ import { Prisma } from '@prisma/client';
 export class StoreService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findCurrent(): Promise<StoreResponseDto> {
+  async findCurrent(): Promise<StoreResponseDto[]> {
     try {
-      const store = await this.prisma.store.findFirst({
+      const store = await this.prisma.store.findMany({
         where: {
           isActive: true,
         },
@@ -27,8 +27,7 @@ export class StoreService {
       if (!store) {
         throw new NotFoundException('Lojas não encontrada');
       }
-
-      return new StoreResponseDto(store);
+      return store.map((store) => new StoreResponseDto(store));
     } catch (e) {
       if (e instanceof NotFoundException) {
         throw e;
@@ -55,11 +54,9 @@ export class StoreService {
           isActive: true,
         },
       });
-      if (dto.slug === currentStore.slug) {
-        throw new ConflictException('Já existe essa tag');
-      }
       return new StoreResponseDto(currentStore);
     } catch (e) {
+      console.error('Erro ao criar loja:', e);
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === 'P2002'
@@ -113,14 +110,14 @@ export class StoreService {
     }
   }
 
-  async currentDelete(id: string) {
+  async remove(id: string): Promise<void> {
     try {
       const findCurrent = await this.prisma.store.findFirst({
         where: { id: id },
       });
 
       if (!findCurrent) {
-        throw new HttpException('Loja não encontrada', HttpStatus.NOT_FOUND);
+        throw new NotFoundException('Loja não encontrada');
       }
 
       await this.prisma.store.delete({
@@ -128,14 +125,12 @@ export class StoreService {
           id: findCurrent.id,
         },
       });
-      return {
-        message: 'Loja deletada',
-      };
     } catch (e) {
       if (e instanceof NotFoundException) {
-        throw new NotFoundException('não foi possivel deletar!');
+        throw e;
       }
-      throw new InternalServerErrorException('Não foi possivel deletar');
+      console.error('Erro ao deletar loja:', e);
+      throw new InternalServerErrorException('Não foi possível deletar a loja.');
     }
   }
 }

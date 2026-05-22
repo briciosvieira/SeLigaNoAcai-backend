@@ -1,6 +1,7 @@
 import { Store } from '@prisma/client';
 
 export class StoreResponseDto {
+  id: string;
   name: string;
   slug: string;
   logoUrl: string | null;
@@ -15,6 +16,7 @@ export class StoreResponseDto {
   isActive: boolean;
 
   constructor(store: Store) {
+    this.id = store.id;
     this.name = store.name;
     this.slug = store.slug;
     this.logoUrl = store.logoUrl;
