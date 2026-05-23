@@ -1,15 +1,8 @@
-import {
-  IsBoolean,
-  IsInt,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString } from 'class-validator';
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateStoreDto } from './create-store.dto';
 
-export class UpdateStoreDto {
+export class UpdateStoreDto extends PartialType(CreateStoreDto) {
   @IsOptional()
   @IsString()
   name?: string;
@@ -17,51 +10,4 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsString()
   slug?: string;
-
-  @IsOptional()
-  @IsString()
-  logoUrl?: string;
-
-  @IsOptional()
-  @IsString()
-  whatsappNumber?: string;
-
-  @IsOptional()
-  @IsString()
-  ifoodUrl?: string;
-
-  @IsOptional()
-  @IsString()
-  pixKey?: string;
-
-  @IsOptional()
-  @IsString()
-  pixKeyType?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @Max(5)
-  rating?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  minDeliveryMinutes?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  maxDeliveryMinutes?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  minimumOrderAmount?: number;
-
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
 }

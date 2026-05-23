@@ -13,7 +13,7 @@ import { CategoriesRespondeDto } from './dto/category-response.dto';
 import { paginate } from 'src/commom/utils/pagination.util';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { Prisma } from '@prisma/client';
-import { UpdateCategoryDto } from './dto/category-update-dto';
+import { UpdateCategoryDto } from './dto/update-category-dto';
 
 @Injectable()
 export class CategoriesService {

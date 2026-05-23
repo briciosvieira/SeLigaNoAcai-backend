@@ -1,7 +1,6 @@
 import {
   IsBoolean,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -26,15 +25,11 @@ export class CreateDeliveryZoneDto {
   @IsNotEmpty({ message: 'A taxa de entrega é obrigatória.' })
   deliveryFee: string;
 
-  @IsBoolean({ message: 'O campo "disponível" deve ser um booleano.' })
+  @IsBoolean()
   @IsOptional()
   isAvailable?: boolean;
 
-  @IsNumber({}, { message: 'A ordem de exibição deve ser um número.' })
-  @IsOptional()
-  displayOrder?: number;
-
   @IsUUID('4', { message: 'O ID da loja deve ser um UUID válido.' })
-  @IsNotEmpty({ message: 'O ID da loja é obrigatório.' })
+  @IsNotEmpty({ message: 'E necessario selecionar a loja' })
   storeId: string;
 }
