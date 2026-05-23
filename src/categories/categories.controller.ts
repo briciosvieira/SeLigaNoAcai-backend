@@ -14,7 +14,7 @@ import { PaginationQueryDto } from 'src/commom/dto/pagination-query.dto';
 import { CategoriesRespondeDto } from './dto/category-response.dto';
 import { ApiResponse } from 'src/commom/interfaces/api-response.interface';
 import { CreateCategoryDto } from './dto/create-category.dto';
-import { UpdateCategoryDto } from './dto/category-update-dto';
+import { UpdateCategoryDto } from './dto/update-category-dto';
 
 @Controller('categories')
 export class CategoriesController {

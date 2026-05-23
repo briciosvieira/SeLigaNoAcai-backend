@@ -7,21 +7,24 @@ import {
   Patch,
   Delete,
   HttpCode,
+  Query,
 } from '@nestjs/common';
 import { DeliveryZonesService } from './delivery-zones.service';
 import { ApiResponse } from 'src/commom/interfaces/api-response.interface';
 import { DeliveryZonesResponseDto } from './dto/delivery-zones-response';
 import { CreateDeliveryZoneDto } from './dto/create-delivery-zone.dto';
 import { UpdateDeliveryZoneDto } from './dto/update-delivery-zone.dto';
+import { PaginationQueryDto } from 'src/commom/dto/pagination-query.dto';
 
 @Controller('delivery-zones')
 export class DeliveryZonesController {
   constructor(private readonly service: DeliveryZonesService) {}
 
   @Get()
-  async findDeliveryZone(): Promise<ApiResponse<DeliveryZonesResponseDto[]>> {
-    const zones = await this.service.findZone();
-    return { data: zones };
+  async findDeliveryZone(
+    @Query() query: PaginationQueryDto,
+  ): Promise<ApiResponse<DeliveryZonesResponseDto[]>> {
+    return this.service.findManyZone(query);
   }
 
   @Get(':id')

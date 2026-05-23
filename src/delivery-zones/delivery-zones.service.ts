@@ -9,18 +9,32 @@ import { DeliveryZonesResponseDto } from './dto/delivery-zones-response';
 import { CreateDeliveryZoneDto } from './dto/create-delivery-zone.dto';
 import { UpdateDeliveryZoneDto } from './dto/update-delivery-zone.dto';
 import { Prisma } from '@prisma/client';
+import { PaginationQueryDto } from 'src/commom/dto/pagination-query.dto';
+import { paginate } from 'src/commom/utils/pagination.util';
+import { ApiResponse } from 'src/commom/interfaces/api-response.interface';
 
 @Injectable()
 export class DeliveryZonesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findZone(): Promise<DeliveryZonesResponseDto[]> {
+  async findManyZone(
+    query: PaginationQueryDto,
+  ): Promise<ApiResponse<DeliveryZonesResponseDto[]>> {
     try {
-      const zones = await this.prisma.deliveryZone.findMany({
-        where: { isAvailable: true },
-      });
+      const { skip, take, meta } = paginate(query.page, query.limit);
 
-      return zones.map((zone) => new DeliveryZonesResponseDto(zone));
+      const [zones, total] = await this.prisma.$transaction([
+        this.prisma.deliveryZone.findMany({
+          skip,
+          take,
+          orderBy: { displayOrder: 'asc' },
+        }),
+        this.prisma.deliveryZone.count(),
+      ]);
+      return {
+        data: zones.map((zone) => new DeliveryZonesResponseDto(zone)),
+        meta: meta(total),
+      };
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -51,8 +65,24 @@ export class DeliveryZonesService {
     createDeliveryZoneDto: CreateDeliveryZoneDto,
   ): Promise<DeliveryZonesResponseDto> {
     try {
+      const lastDelivery = await this.prisma.deliveryZone.findFirst({
+        where: {
+          storeId: createDeliveryZoneDto.storeId,
+        },
+        orderBy: {
+          displayOrder: 'desc',
+        },
+        select: {
+          displayOrder: true,
+        },
+      });
+      const nextDisplayOrder = (lastDelivery?.displayOrder ?? 0) + 1;
+
       const newZone = await this.prisma.deliveryZone.create({
-        data: createDeliveryZoneDto,
+        data: {
+          ...createDeliveryZoneDto,
+          displayOrder: nextDisplayOrder,
+        },
       });
       return new DeliveryZonesResponseDto(newZone);
     } catch (error) {
