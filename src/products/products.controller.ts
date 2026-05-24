@@ -18,6 +18,9 @@ import { UpdateProductDto } from './dto/update-products.dto';
 import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
 import { ProductVariantResponseDto } from './dto/product-variant-response.dto';
 import { CreateProductVariantDto } from './dto/create-product-variant.dto';
+import { ProductOptionGroupResponseDto } from './dto/product-option-group-response.dto';
+import { UpdateProductOptionGroupDto } from './dto/update-product-option-group.dto';
+import { CreateProductOptionGroupDto } from './dto/create-product-option-group.dto';
 
 @Controller('products')
 export class ProductsController {
@@ -103,6 +106,64 @@ export class ProductsController {
 
     return {
       data: result,
+    };
+  }
+
+  @Get(':productId/option-groups')
+  async findOptionGroupsByProduct(
+    @Param('productId') productId: string,
+  ): Promise<ApiResponse<ProductOptionGroupResponseDto[]>> {
+    const optionGroups =
+      await this.service.findOptionGroupsByProduct(productId);
+
+    return {
+      data: optionGroups,
+    };
+  }
+
+  @Post(':productId/option-groups')
+  async createProductOptionGroup(
+    @Param('productId') productId: string,
+    @Body() dto: CreateProductOptionGroupDto,
+  ): Promise<ApiResponse<ProductOptionGroupResponseDto>> {
+    const productOptionGroup = await this.service.createProductOptionGroup(
+      productId,
+      dto,
+    );
+
+    return {
+      data: productOptionGroup,
+    };
+  }
+
+  @Patch(':productId/option-groups/:id')
+  async updateProductOptionGroup(
+    @Param('productId') productId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateProductOptionGroupDto,
+  ): Promise<ApiResponse<ProductOptionGroupResponseDto>> {
+    const productOptionGroup = await this.service.updateProductOptionGroup(
+      productId,
+      id,
+      dto,
+    );
+
+    return {
+      data: productOptionGroup,
+    };
+  }
+
+  @Delete(':productId/option-groups/:id')
+  async removeProductOptionGroup(
+    @Param('productId') productId: string,
+    @Param('id') id: string,
+  ): Promise<ApiResponse<{ deleted: boolean }>> {
+    await this.service.removeProductOptionGroup(productId, id);
+
+    return {
+      data: {
+        deleted: true,
+      },
     };
   }
 }

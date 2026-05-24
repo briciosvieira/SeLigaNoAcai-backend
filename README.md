@@ -71,8 +71,6 @@ Exemplo de resposta padrao:
 
 ```json
 {
-  "success": true,
-  "message": "Loja encontrada com sucesso.",
   "data": {
     "id": "uuid",
     "name": "Se Liga no Acai"
