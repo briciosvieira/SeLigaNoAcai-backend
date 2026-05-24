@@ -7,6 +7,8 @@ import { ConfigModule } from '@nestjs/config';
 import { DeliveryZonesModule } from 'src/delivery-zones/delivery-zones.module';
 import { CategoriesModule } from 'src/categories/categories.module';
 import { ProductsModule } from 'src/products/products.module';
+import { OptionsModule } from 'src/options/options.module';
+import { OrdersModule } from 'src/orders/orders.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { ProductsModule } from 'src/products/products.module';
     DeliveryZonesModule,
     CategoriesModule,
     ProductsModule,
+    OptionsModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   HttpStatus,
@@ -17,6 +18,9 @@ import { paginate } from 'src/commom/utils/pagination.util';
 import { CreateProductVariantDto } from './dto/create-product-variant.dto';
 import { ProductVariantResponseDto } from './dto/product-variant-response.dto';
 import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
+import { CreateProductOptionGroupDto } from './dto/create-product-option-group.dto';
+import { UpdateProductOptionGroupDto } from './dto/update-product-option-group.dto';
+import { ProductOptionGroupResponseDto } from './dto/product-option-group-response.dto';
 
 @Injectable()
 export class ProductsService {
@@ -398,5 +402,244 @@ export class ProductsService {
       id: variantId,
       deleted: true,
     };
+  }
+
+  async findOptionGroupsByProduct(
+    productId: string,
+  ): Promise<ProductOptionGroupResponseDto[]> {
+    const product = await this.prisma.product.findUnique({
+      where: {
+        id: productId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produto não encontrado.');
+    }
+
+    const productOptionGroups = await this.prisma.productOptionGroup.findMany({
+      where: {
+        productId,
+      },
+      include: {
+        optionGroup: {
+          include: {
+            options: {
+              where: {
+                isActive: true,
+              },
+              orderBy: {
+                displayOrder: 'asc',
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        displayOrder: 'asc',
+      },
+    });
+
+    return productOptionGroups.map(
+      (productOptionGroup) =>
+        new ProductOptionGroupResponseDto(productOptionGroup),
+    );
+  }
+
+  async createProductOptionGroup(
+    productId: string,
+    dto: CreateProductOptionGroupDto,
+  ): Promise<ProductOptionGroupResponseDto> {
+    try {
+      const productOptionGroup = await this.prisma.$transaction(async (tx) => {
+        const product = await tx.product.findUnique({
+          where: {
+            id: productId,
+          },
+          select: {
+            id: true,
+            storeId: true,
+          },
+        });
+
+        if (!product) {
+          throw new NotFoundException('Produto não encontrado.');
+        }
+
+        const optionGroup = await tx.optionGroup.findUnique({
+          where: {
+            id: dto.optionGroupId,
+          },
+          select: {
+            id: true,
+            storeId: true,
+          },
+        });
+
+        if (!optionGroup) {
+          throw new NotFoundException('Grupo de opções não encontrado.');
+        }
+
+        if (product.storeId !== optionGroup.storeId) {
+          throw new BadRequestException(
+            'O grupo de opções não pertence à mesma loja do produto.',
+          );
+        }
+
+        const lastProductOptionGroup = await tx.productOptionGroup.findFirst({
+          where: {
+            productId,
+          },
+          orderBy: {
+            displayOrder: 'desc',
+          },
+          select: {
+            displayOrder: true,
+          },
+        });
+
+        const nextDisplayOrder =
+          (lastProductOptionGroup?.displayOrder ?? 0) + 1;
+
+        return tx.productOptionGroup.create({
+          data: {
+            product: {
+              connect: {
+                id: productId,
+              },
+            },
+            optionGroup: {
+              connect: {
+                id: dto.optionGroupId,
+              },
+            },
+            minSelected: dto.minSelected,
+            maxSelected: dto.maxSelected,
+            isRequired: dto.isRequired,
+            displayOrder: nextDisplayOrder,
+          },
+          include: {
+            optionGroup: {
+              include: {
+                options: {
+                  where: {
+                    isActive: true,
+                  },
+                  orderBy: {
+                    displayOrder: 'asc',
+                  },
+                },
+              },
+            },
+          },
+        });
+      });
+
+      return new ProductOptionGroupResponseDto(productOptionGroup);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Este grupo de opções já está vinculado a este produto.',
+        );
+      }
+
+      throw new InternalServerErrorException(
+        'Não foi possível vincular o grupo de opções ao produto.',
+      );
+    }
+  }
+
+  async updateProductOptionGroup(
+    productId: string,
+    id: string,
+    dto: UpdateProductOptionGroupDto,
+  ): Promise<ProductOptionGroupResponseDto> {
+    try {
+      const currentProductOptionGroup =
+        await this.prisma.productOptionGroup.findFirst({
+          where: {
+            id,
+            productId,
+          },
+        });
+
+      if (!currentProductOptionGroup) {
+        throw new NotFoundException(
+          'Grupo de opções do produto não encontrado.',
+        );
+      }
+
+      const updatedProductOptionGroup =
+        await this.prisma.productOptionGroup.update({
+          where: {
+            id,
+          },
+          data: {
+            minSelected: dto.minSelected,
+            maxSelected: dto.maxSelected,
+            isRequired: dto.isRequired,
+            displayOrder: dto.displayOrder,
+          },
+          include: {
+            optionGroup: {
+              include: {
+                options: {
+                  where: {
+                    isActive: true,
+                  },
+                  orderBy: {
+                    displayOrder: 'asc',
+                  },
+                },
+              },
+            },
+          },
+        });
+
+      return new ProductOptionGroupResponseDto(updatedProductOptionGroup);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        'Não foi possível atualizar o grupo de opções do produto.',
+      );
+    }
+  }
+
+  async removeProductOptionGroup(productId: string, id: string): Promise<void> {
+    const productOptionGroup = await this.prisma.productOptionGroup.findFirst({
+      where: {
+        id,
+        productId,
+      },
+    });
+
+    if (!productOptionGroup) {
+      throw new NotFoundException('Grupo de opções do produto não encontrado.');
+    }
+
+    try {
+      await this.prisma.productOptionGroup.delete({
+        where: {
+          id,
+        },
+      });
+    } catch (error) {
+      throw new InternalServerErrorException(
+        'Não foi possível remover o grupo de opções do produto.',
+      );
+    }
   }
 }
