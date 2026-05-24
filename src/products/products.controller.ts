@@ -15,6 +15,9 @@ import { ApiResponse } from 'src/commom/interfaces/api-response.interface';
 import { ProductResponseDto } from './dto/product-response.dto';
 import { CreateProductDto } from './dto/create-products.dto';
 import { UpdateProductDto } from './dto/update-products.dto';
+import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
+import { ProductVariantResponseDto } from './dto/product-variant-response.dto';
+import { CreateProductVariantDto } from './dto/create-product-variant.dto';
 
 @Controller('products')
 export class ProductsController {
@@ -54,5 +57,52 @@ export class ProductsController {
   @HttpCode(204)
   async remove(@Param('id') id: string): Promise<void> {
     await this.service.remove(id);
+  }
+
+  @Get(':productId/variants')
+  async findVariantsByProduct(
+    @Param('productId') productId: string,
+  ): Promise<ApiResponse<ProductVariantResponseDto[]>> {
+    const variants = await this.service.findVariantsByProduct(productId);
+
+    return {
+      data: variants,
+    };
+  }
+  @Post(':productId/variants')
+  async createVariant(
+    @Param('productId') productId: string,
+    @Body() dto: CreateProductVariantDto,
+  ): Promise<ApiResponse<ProductVariantResponseDto>> {
+    const variant = await this.service.createVariant(productId, dto);
+
+    return {
+      data: variant,
+    };
+  }
+
+  @Patch(':productId/variants/:variantId')
+  async updateVariant(
+    @Param('productId') productId: string,
+    @Param('variantId') variantId: string,
+    @Body() dto: UpdateProductVariantDto,
+  ): Promise<ApiResponse<ProductVariantResponseDto>> {
+    const variant = await this.service.updateVariant(productId, variantId, dto);
+
+    return {
+      data: variant,
+    };
+  }
+
+  @Delete(':productId/variants/:variantId')
+  async removeVariant(
+    @Param('productId') productId: string,
+    @Param('variantId') variantId: string,
+  ): Promise<ApiResponse<{ id: string; deleted: boolean }>> {
+    const result = await this.service.removeVariant(productId, variantId);
+
+    return {
+      data: result,
+    };
   }
 }
