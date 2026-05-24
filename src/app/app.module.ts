@@ -6,6 +6,7 @@ import { StoreModule } from 'src/store/store.module';
 import { ConfigModule } from '@nestjs/config';
 import { DeliveryZonesModule } from 'src/delivery-zones/delivery-zones.module';
 import { CategoriesModule } from 'src/categories/categories.module';
+import { ProductsModule } from 'src/products/products.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CategoriesModule } from 'src/categories/categories.module';
     StoreModule,
     DeliveryZonesModule,
     CategoriesModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
