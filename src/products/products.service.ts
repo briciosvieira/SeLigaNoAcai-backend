@@ -14,6 +14,9 @@ import { ProductResponseDto } from './dto/product-response.dto';
 import { CreateProductDto } from './dto/create-products.dto';
 import { UpdateProductDto } from './dto/update-products.dto';
 import { paginate } from 'src/commom/utils/pagination.util';
+import { CreateProductVariantDto } from './dto/create-product-variant.dto';
+import { ProductVariantResponseDto } from './dto/product-variant-response.dto';
+import { UpdateProductVariantDto } from './dto/update-product-variant.dto';
 
 @Injectable()
 export class ProductsService {
@@ -181,5 +184,219 @@ export class ProductsService {
         'Não foi possível remover o produto.',
       );
     }
+  }
+
+  async findVariantsByProduct(
+    productId: string,
+  ): Promise<ProductVariantResponseDto[]> {
+    const product = await this.prisma.product.findUnique({
+      where: {
+        id: productId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produto não encontrado.');
+    }
+
+    const variants = await this.prisma.productVariant.findMany({
+      where: {
+        productId,
+      },
+      orderBy: {
+        displayOrder: 'asc',
+      },
+    });
+
+    return variants.map((variant) => new ProductVariantResponseDto(variant));
+  }
+
+  async createVariant(
+    productId: string,
+    dto: CreateProductVariantDto,
+  ): Promise<ProductVariantResponseDto> {
+    try {
+      const variant = await this.prisma.$transaction(async (tx) => {
+        const product = await tx.product.findUnique({
+          where: {
+            id: productId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (!product) {
+          throw new NotFoundException('Produto não encontrado.');
+        }
+
+        const lastVariant = await tx.productVariant.findFirst({
+          where: {
+            productId,
+          },
+          orderBy: {
+            displayOrder: 'desc',
+          },
+          select: {
+            displayOrder: true,
+          },
+        });
+
+        const existingDefault = await tx.productVariant.findFirst({
+          where: {
+            productId,
+            isDefault: true,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        const nextDisplayOrder = (lastVariant?.displayOrder ?? 0) + 1;
+
+        const shouldBeDefault = dto.isDefault ?? !existingDefault;
+
+        if (shouldBeDefault) {
+          await tx.productVariant.updateMany({
+            where: {
+              productId,
+            },
+            data: {
+              isDefault: false,
+            },
+          });
+        }
+
+        return tx.productVariant.create({
+          data: {
+            product: {
+              connect: {
+                id: productId,
+              },
+            },
+            name: dto.name,
+            price: dto.price,
+            isDefault: shouldBeDefault,
+            isActive: dto.isActive ?? true,
+            displayOrder: nextDisplayOrder,
+          },
+        });
+      });
+
+      return new ProductVariantResponseDto(variant);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Já existe uma variação cadastrada com este nome para este produto.',
+        );
+      }
+
+      throw new InternalServerErrorException(
+        'Não foi possível criar a variação do produto.',
+      );
+    }
+  }
+
+  async updateVariant(
+    productId: string,
+    variantId: string,
+    dto: UpdateProductVariantDto,
+  ): Promise<ProductVariantResponseDto> {
+    try {
+      const variant = await this.prisma.$transaction(async (tx) => {
+        const currentVariant = await tx.productVariant.findFirst({
+          where: {
+            id: variantId,
+            productId,
+          },
+        });
+
+        if (!currentVariant) {
+          throw new NotFoundException('Variação do produto não encontrada.');
+        }
+
+        if (dto.isDefault === true) {
+          await tx.productVariant.updateMany({
+            where: {
+              productId,
+              id: {
+                not: variantId,
+              },
+            },
+            data: {
+              isDefault: false,
+            },
+          });
+        }
+
+        return tx.productVariant.update({
+          where: {
+            id: variantId,
+          },
+          data: {
+            name: dto.name,
+            price: dto.price,
+            isDefault: dto.isDefault,
+            isActive: dto.isActive,
+          },
+        });
+      });
+
+      return new ProductVariantResponseDto(variant);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Já existe uma variação cadastrada com este nome para este produto.',
+        );
+      }
+
+      throw new InternalServerErrorException(
+        'Não foi possível atualizar a variação do produto.',
+      );
+    }
+  }
+
+  async removeVariant(
+    productId: string,
+    variantId: string,
+  ): Promise<{ id: string; deleted: boolean }> {
+    const variant = await this.prisma.productVariant.findFirst({
+      where: {
+        id: variantId,
+        productId,
+      },
+    });
+
+    if (!variant) {
+      throw new NotFoundException('Variação do produto não encontrada.');
+    }
+
+    await this.prisma.productVariant.delete({
+      where: {
+        id: variantId,
+      },
+    });
+
+    return {
+      id: variantId,
+      deleted: true,
+    };
   }
 }
