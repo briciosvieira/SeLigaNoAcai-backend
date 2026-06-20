@@ -68,4 +68,11 @@ export class LoyaltyAdminController {
   ): Promise<ApiResponse<CustomerLoyaltyResponseDto>> {
     return this.service.adminRemoveStamps(customerId, dto);
   }
+
+  @Post('customers/:customerId/rewards/redeem')
+  async redeemReward(
+    @Param('customerId') customerId: string,
+  ): Promise<ApiResponse<CustomerLoyaltyResponseDto>> {
+    return this.service.adminRedeemReward(customerId);
+  }
 }
