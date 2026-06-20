@@ -247,6 +247,46 @@ export class LoyaltyService {
     return { data: new CustomerLoyaltyResponseDto(updated, customer, history) };
   }
 
+  async adminRedeemReward(customerId: string): Promise<ApiResponse<CustomerLoyaltyResponseDto>> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true, fullName: true },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado.');
+
+    const { loyalty } = await this.getOrCreateLoyalty(customerId);
+
+    if (loyalty.availableRewards <= 0) {
+      throw new BadRequestException('Este cliente não possui brindes disponíveis.');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.customerLoyalty.update({
+        where: { id: loyalty.id },
+        data: { availableRewards: loyalty.availableRewards - 1 },
+      });
+
+      await tx.loyaltyStampHistory.create({
+        data: {
+          customerLoyalty: { connect: { id: loyalty.id } },
+          type: LoyaltyStampHistoryType.REWARD_REDEEMED,
+          quantity: 1,
+          reason: 'Brinde entregue pelo administrador.',
+        },
+      });
+
+      return result;
+    });
+
+    const history = await this.prisma.loyaltyStampHistory.findMany({
+      where: { customerLoyaltyId: loyalty.id },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+
+    return { data: new CustomerLoyaltyResponseDto(updated, customer, history) };
+  }
+
   // ─── Stamp ao concluir pedido (chamado pelo OrdersService) ─────────────────
 
   async tryAddStampForOrder(tx: LoyaltyTx, orderId: string): Promise<void> {
