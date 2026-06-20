@@ -1,13 +1,13 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class CreateOrderAddressDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'A rua é obrigatória.' })
-  street: string;
+  street?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'O número é obrigatório.' })
-  number: string;
+  number?: string;
 
   @IsOptional()
   @IsString()

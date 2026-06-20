@@ -9,6 +9,7 @@ export class ProductResponseDto {
   description: string | null;
   emoji: string | null;
   imageUrl: string | null;
+  mobileImageUrl: string | null;
   basePrice: string;
   oldPrice: string | null;
   badge: string | null;
@@ -29,6 +30,7 @@ export class ProductResponseDto {
     this.description = product.description;
     this.emoji = product.emoji;
     this.imageUrl = product.imageUrl;
+    this.mobileImageUrl = product.mobileImageUrl;
     this.basePrice = product.basePrice.toString();
     this.oldPrice = product.oldPrice ? product.oldPrice.toString() : null;
     this.badge = product.badge;

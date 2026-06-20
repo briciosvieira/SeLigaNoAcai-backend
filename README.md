@@ -1,70 +1,71 @@
 # Se Liga no Açaí - Backend
 
-Documentação técnica do backend da aplicação **Se Liga no Açaí**.
+Documentação técnica atualizada do backend da aplicação **Se Liga no Açaí**.
 
-Este documento descreve a arquitetura planejada e o estado atual do projeto, incluindo módulos já criados, módulos futuros, estrutura de pastas, banco de dados, migrations, regras de negócio, rotas públicas, rotas administrativas e estratégia de autenticação/autorização.
+Este README descreve o estado atual do projeto, arquitetura, stack, regras de negócio, autenticação, pagamentos, fidelidade, uploads, dashboard, rotas disponíveis, variáveis de ambiente e próximos passos.
 
 ---
 
-## 1. Visão Geral
+## 1. Visão geral
 
 O **Se Liga no Açaí** é uma API RESTful para uma loja de açaí/delivery.
 
-A API foi criada para atender:
+A API atende:
 
 - cardápio digital;
-- bairros e taxas de entrega;
-- categorias de produtos;
-- produtos;
-- variações de produtos;
+- categorias, produtos e variações;
 - grupos de opções e adicionais;
-- vínculo entre produtos e grupos de opções;
-- criação de pedidos sem login;
-- consulta detalhada de pedidos;
-- confirmação manual de pagamento;
-- atualização de status do pedido;
-- geração de mensagem para WhatsApp da loja;
-- autenticação de clientes e administradores;
-- fidelidade;
-- notificações;
-- dashboard administrativo.
+- bairros e taxas de entrega;
+- criação de pedidos com ou sem login;
+- autenticação manual com JWT;
+- login com Google;
+- histórico de pedidos do cliente;
+- endereços do cliente;
+- tracking público de pedido;
+- pagamentos via PIX Banco Inter;
+- pagamentos manuais na entrega;
+- fidelidade por cartões/ciclos;
+- dashboard administrativo;
+- upload local de imagens.
 
-O projeto permite compra **sem autenticação**, mas futuramente também suportará clientes autenticados, login com Google, fidelidade e área do cliente.
+O sistema permite compra **sem autenticação**, criando um cliente guest para o pedido, mas também suporta cliente autenticado para histórico, endereços e fidelidade.
 
 ---
 
-## 2. Stack Técnica
+## 2. Stack técnica
 
 ### Stack atual
 
-- NestJS
-- TypeScript
+- NestJS 11
+- TypeScript 5
 - Prisma ORM 7+
 - PostgreSQL
-- Prisma PostgreSQL Adapter
+- Prisma PostgreSQL Adapter (`@prisma/adapter-pg`)
 - class-validator
 - class-transformer
-- helmet
-- compression
-- cookie-parser
-
-### Stack planejada
-
-- JWT
-- Passport JWT
+- JWT (`@nestjs/jwt`)
+- Passport JWT (`passport`, `passport-jwt`)
 - bcrypt
-- Google OAuth
-- Swagger
-- Redis
-- Gateway de pagamento
-- Upload de imagens
+- date-fns
+- google-auth-library
+- axios (cliente HTTP para integração com Banco Inter)
+- multer (upload de arquivos)
+- swagger-ui-express (instalado, configuração pendente)
+- Banco Inter PIX via mTLS/certificados
+- Upload local de imagens
+
+### Futuro / opcional
+
+- Swagger (pacote já instalado, configuração ainda pendente)
 - Docker
+- Redis, se necessário
+- Cartão online / PagBank
+- WhatsApp oficial via API oficial
+- Deploy em produção
 
 ---
 
-## 3. URL Local
-
-A API roda localmente em:
+## 3. URL local
 
 ```txt
 http://localhost:3000
@@ -72,7 +73,7 @@ http://localhost:3000
 
 ---
 
-## 4. Estado Atual do Projeto
+## 4. Estado atual do projeto
 
 ### Criado e testado
 
@@ -82,6 +83,7 @@ ConfigModule
 ValidationPipe global
 ApiResponse<T>
 Paginação base
+
 Store
 Delivery Zones
 Categories
@@ -89,30 +91,78 @@ Products
 Product Variants
 Options
 Product Option Groups
+
 Orders
-Payment manual dentro de Orders
-GET /orders/:id detalhado
+Tracking público
+Pedidos com ou sem token
+Pedidos do cliente autenticado
+Atualização de status do pedido
+Atualização de status de pagamento
+Integração Orders + Loyalty
+
+Auth manual + JWT
+Google Login
+Refresh token
+Logout
+Alteração de senha (usuário autenticado)
+Roles CUSTOMER / STAFF / ADMIN
+Permissões granulares de admin (AdminPermission)
+JwtAuthGuard
+OptionalJwtAuthGuard
+RolesGuard
+CurrentUser decorator
+Roles decorator
+
+Admin Users
+Admin Customers
+
+Customers
+Customer Addresses
+
+Loyalty por cartões/ciclos
+Expiração de cartões
+Resgate de brinde
+Ajuste manual de carimbos
+
+Payments module
+PIX Banco Inter
+Consulta/sincronização PIX Inter
+Dinheiro na entrega
+Cartão na entrega
+Webhook Inter preparado para produção
+
+Dashboard admin
+Fila operacional de pedidos pendentes
+
+Uploads locais
+Upload de produtos
+Upload de logo da loja
+Remoção de arquivos
+Arquivos servidos via /uploads/*
 ```
 
-### Ainda será criado
+### Ainda pendente
 
 ```txt
-Auth
-Customers
-Roles e Guards
-Payments module completo
-Notifications
-Loyalty
-Dashboard
-Uploads
 Swagger
-Testes
+Testes finais ponta a ponta
 Deploy
+Seed real quando o cliente passar os dados
+```
+
+### Adiado para evolução futura
+
+```txt
+Cartão online / PagBank
+WhatsApp automático oficial
+Notifications module
+Redis
+Docker
 ```
 
 ---
 
-## 5. Decisões de Arquitetura
+## 5. Decisões de arquitetura
 
 ### 5.1 Prisma como camada de banco
 
@@ -136,9 +186,9 @@ Os tipos, models e enums são gerados pelo Prisma em:
 
 ### 5.2 Enums do Prisma
 
-Enums não devem ser duplicados manualmente em `src/common/enums` enquanto já existirem no Prisma.
+Enums não devem ser duplicados manualmente em `src/commom/enums` enquanto já existirem no Prisma.
 
-Exemplo de uso:
+Exemplo:
 
 ```ts
 import { OrderStatus, PaymentStatus, PaymentMethod } from '@prisma/client';
@@ -183,6 +233,7 @@ O projeto usa:
 ```txt
 Create DTO
 Update DTO
+Filter DTO
 Response DTO
 ```
 
@@ -198,12 +249,12 @@ Formato padrão de resposta:
 
 ```txt
 {
-  data: T
+  data: T,
   meta?: PaginationMeta
 }
 ```
 
-Paginação usa:
+Paginação padrão:
 
 ```txt
 page = 1
@@ -212,9 +263,19 @@ limit = 10
 
 ---
 
-## 6. Estrutura Full Planejada do Backend
+### 5.7 Pasta `commom`
 
-A estrutura abaixo representa o backend completo planejado, incluindo o que já foi criado e o que ainda será desenvolvido.
+O projeto atual usa a pasta:
+
+```txt
+src/commom
+```
+
+Mesmo com a grafia diferente de `common`, o README documenta a estrutura real usada no projeto.
+
+---
+
+## 6. Estrutura atual/recomendada do backend
 
 ```txt
 backend/
@@ -222,6 +283,10 @@ backend/
  │   ├── schema.prisma
  │   ├── migrations/
  │   └── seed.ts
+ │
+ ├── uploads/
+ │   ├── products/
+ │   └── store/
  │
  ├── src/
  │   ├── app/
@@ -231,21 +296,37 @@ backend/
  │   │   ├── prisma.module.ts
  │   │   └── prisma.service.ts
  │   │
+ │   ├── admin/
+ │   │   ├── dto/
+ │   │   │   ├── create-admin-user.dto.ts
+ │   │   │   ├── update-admin-user.dto.ts
+ │   │   │   ├── update-admin-user-role.dto.ts
+ │   │   │   ├── update-admin-user-status.dto.ts
+ │   │   │   ├── update-admin-user-permissions.dto.ts
+ │   │   │   ├── filter-admin-users.dto.ts
+ │   │   │   ├── admin-user-response.dto.ts
+ │   │   │   ├── filter-admin-customers.dto.ts
+ │   │   │   ├── admin-customer-response.dto.ts
+ │   │   │   ├── update-admin-customer.dto.ts
+ │   │   │   └── update-admin-customer-status.dto.ts
+ │   │   ├── admin.controller.ts
+ │   │   ├── admin-customers.controller.ts
+ │   │   ├── admin.module.ts
+ │   │   └── admin.service.ts
+ │   │
  │   ├── auth/
  │   │   ├── dto/
  │   │   │   ├── register.dto.ts
  │   │   │   ├── login.dto.ts
- │   │   │   ├── google-login.dto.ts
- │   │   │   ├── guest-login.dto.ts
  │   │   │   ├── refresh-token.dto.ts
+ │   │   │   ├── google-login.dto.ts
  │   │   │   └── auth-response.dto.ts
  │   │   ├── guards/
  │   │   │   ├── jwt-auth.guard.ts
  │   │   │   ├── optional-jwt-auth.guard.ts
  │   │   │   └── roles.guard.ts
  │   │   ├── strategies/
- │   │   │   ├── jwt.strategy.ts
- │   │   │   └── google.strategy.ts
+ │   │   │   └── jwt.strategy.ts
  │   │   ├── decorators/
  │   │   │   ├── current-user.decorator.ts
  │   │   │   └── roles.decorator.ts
@@ -254,154 +335,56 @@ backend/
  │   │   └── auth.service.ts
  │   │
  │   ├── store/
- │   │   ├── dto/
- │   │   │   ├── create-store.dto.ts
- │   │   │   ├── update-store.dto.ts
- │   │   │   └── store-response.dto.ts
- │   │   ├── store.controller.ts
- │   │   ├── store.module.ts
- │   │   └── store.service.ts
- │   │
  │   ├── delivery-zones/
- │   │   ├── dto/
- │   │   │   ├── create-delivery-zone.dto.ts
- │   │   │   ├── update-delivery-zone.dto.ts
- │   │   │   └── delivery-zones-response.dto.ts
- │   │   ├── delivery-zones.controller.ts
- │   │   ├── delivery-zones.module.ts
- │   │   └── delivery-zones.service.ts
- │   │
  │   ├── categories/
- │   │   ├── dto/
- │   │   │   ├── create-category.dto.ts
- │   │   │   ├── update-category.dto.ts
- │   │   │   └── category-response.dto.ts
- │   │   ├── categories.controller.ts
- │   │   ├── categories.module.ts
- │   │   └── categories.service.ts
- │   │
  │   ├── products/
- │   │   ├── dto/
- │   │   │   ├── create-products.dto.ts
- │   │   │   ├── update-products.dto.ts
- │   │   │   ├── product-response.dto.ts
- │   │   │   ├── create-product-variant.dto.ts
- │   │   │   ├── update-product-variant.dto.ts
- │   │   │   ├── product-variant-response.dto.ts
- │   │   │   ├── create-product-option-group.dto.ts
- │   │   │   ├── update-product-option-group.dto.ts
- │   │   │   └── product-option-group-response.dto.ts
- │   │   ├── products.controller.ts
- │   │   ├── products.module.ts
- │   │   └── products.service.ts
- │   │
  │   ├── options/
- │   │   ├── dto/
- │   │   │   ├── create-option-group.dto.ts
- │   │   │   ├── update-option-group.dto.ts
- │   │   │   ├── create-option.dto.ts
- │   │   │   ├── update-option.dto.ts
- │   │   │   ├── option-group-response.dto.ts
- │   │   │   └── option-response.dto.ts
- │   │   ├── options.controller.ts
- │   │   ├── options.module.ts
- │   │   └── options.service.ts
- │   │
  │   ├── orders/
- │   │   ├── dto/
- │   │   │   ├── create-order.dto.ts
- │   │   │   ├── create-order-customer.dto.ts
- │   │   │   ├── create-order-address.dto.ts
- │   │   │   ├── create-order-item.dto.ts
- │   │   │   ├── create-order-item-option.dto.ts
- │   │   │   ├── filter-orders.dto.ts
- │   │   │   ├── update-order-status.dto.ts
- │   │   │   ├── update-payment-status.dto.ts
- │   │   │   ├── order-response.dto.ts
- │   │   │   ├── order-detail-response.dto.ts
- │   │   │   ├── order-item-response.dto.ts
- │   │   │   ├── order-item-option-response.dto.ts
- │   │   │   ├── order-payment-response.dto.ts
- │   │   │   └── order-status-history-response.dto.ts
- │   │   ├── orders.controller.ts
- │   │   ├── orders.module.ts
- │   │   └── orders.service.ts
- │   │
  │   ├── customers/
- │   │   ├── dto/
- │   │   │   ├── customer-response.dto.ts
- │   │   │   ├── update-customer.dto.ts
- │   │   │   ├── create-customer-address.dto.ts
- │   │   │   ├── update-customer-address.dto.ts
- │   │   │   └── customer-address-response.dto.ts
- │   │   ├── customers.controller.ts
- │   │   ├── customers.module.ts
- │   │   └── customers.service.ts
- │   │
+ │   ├── loyalty/
  │   ├── payments/
  │   │   ├── dto/
- │   │   │   ├── update-payment-status.dto.ts
- │   │   │   ├── payment-response.dto.ts
- │   │   │   ├── pix-payment.dto.ts
- │   │   │   └── card-payment.dto.ts
+ │   │   ├── providers/
+ │   │   │   ├── inter/
+ │   │   │   │   ├── inter-auth.service.ts
+ │   │   │   │   ├── inter-pix.service.ts
+ │   │   │   │   └── inter.types.ts
+ │   │   │   ├── manual-payment.provider.ts
+ │   │   │   └── payment-provider.interface.ts
  │   │   ├── payments.controller.ts
  │   │   ├── payments.module.ts
  │   │   └── payments.service.ts
  │   │
- │   ├── notifications/
- │   │   ├── dto/
- │   │   │   ├── send-whatsapp.dto.ts
- │   │   │   └── notification-response.dto.ts
- │   │   ├── notifications.controller.ts
- │   │   ├── notifications.module.ts
- │   │   └── notifications.service.ts
- │   │
- │   ├── loyalty/
- │   │   ├── dto/
- │   │   │   ├── loyalty-response.dto.ts
- │   │   │   ├── create-loyalty-program.dto.ts
- │   │   │   ├── update-loyalty-program.dto.ts
- │   │   │   └── redeem-reward.dto.ts
- │   │   ├── loyalty.controller.ts
- │   │   ├── loyalty.module.ts
- │   │   └── loyalty.service.ts
- │   │
  │   ├── dashboard/
  │   │   ├── dto/
- │   │   │   └── dashboard-filter.dto.ts
  │   │   ├── dashboard.controller.ts
  │   │   ├── dashboard.module.ts
  │   │   └── dashboard.service.ts
  │   │
  │   ├── uploads/
+ │   │   ├── dto/
+ │   │   │   └── upload-response.dto.ts
  │   │   ├── uploads.controller.ts
  │   │   ├── uploads.module.ts
  │   │   └── uploads.service.ts
  │   │
- │   ├── common/
+ │   ├── commom/
  │   │   ├── dto/
  │   │   │   └── pagination-query.dto.ts
- │   │   ├── filters/
- │   │   │   └── http-exception.filter.ts
- │   │   ├── interceptors/
- │   │   │   └── response.interceptor.ts
  │   │   ├── interfaces/
  │   │   │   └── api-response.interface.ts
- │   │   ├── utils/
- │   │   │   ├── pagination.util.ts
- │   │   │   ├── slug.util.ts
- │   │   │   ├── currency.util.ts
- │   │   │   ├── order-number.util.ts
- │   │   │   └── customer-code.util.ts
- │   │   └── constants/
- │   │       └── app.constants.ts
+ │   │   └── utils/
+ │   │       ├── pagination.util.ts
+ │   │       ├── slug.util.ts
+ │   │       ├── currency.util.ts
+ │   │       ├── order-number.util.ts
+ │   │       └── customer-code.util.ts
  │   │
  │   └── main.ts
  │
  ├── .env
  ├── .env.example
- ├── docker-compose.yml
- ├── Dockerfile
+ ├── .gitignore
  ├── package.json
  ├── prisma.config.ts
  ├── tsconfig.json
@@ -411,14 +394,90 @@ backend/
 
 ---
 
-## 7. Banco de Dados
+## 7. Variáveis de ambiente
 
-### 7.1 Models existentes
+Exemplo de `.env` para desenvolvimento:
+
+```env
+DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/seliganoacai"
+
+NODE_ENV=development
+PORT=3000
+FRONTEND_URL=http://localhost:5173
+
+JWT_ACCESS_SECRET=change_me_access_secret
+JWT_REFRESH_SECRET=change_me_refresh_secret
+JWT_ACCESS_EXPIRES_IN=2h
+JWT_REFRESH_EXPIRES_IN=7d
+
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+
+INTER_API_BASE_URL=https://cdpj.partners.bancointer.com.br
+INTER_TOKEN_URL=https://cdpj.partners.bancointer.com.br/oauth/v2/token
+INTER_PIX_COB_URL=https://cdpj.partners.bancointer.com.br/pix/v2/cob
+INTER_CLIENT_KEY_PATH=./src/certs/Inter_chave.key
+INTER_CLIENT_CERT_PATH=./src/certs/Inter_cert.crt
+INTER_CLIENT_ID=your_inter_client_id
+INTER_CLIENT_SECRET=your_inter_client_secret
+INTER_PIX_KEY=your_pix_key
+INTER_PIX_EXPIRATION_SECONDS=300
+```
+
+Para testar Google Login com HTML local em Live Server, o CORS local pode aceitar também:
+
+```txt
+http://localhost:5500
+http://127.0.0.1:5500
+```
+
+---
+
+## 8. Segurança e arquivos sensíveis
+
+Nunca versionar:
+
+```txt
+.env
+certs/
+src/certs/
+*.crt
+*.key
+*.pem
+*.pfx
+*.p12
+uploads/
+google-test.html
+```
+
+Exemplo recomendado no `.gitignore`:
+
+```gitignore
+.env
+
+certs/
+src/certs/
+*.crt
+*.key
+*.pem
+*.pfx
+*.p12
+
+uploads/
+
+google-test.html
+```
+
+---
+
+## 9. Banco de dados
+
+### 9.1 Models principais
 
 ```txt
 Store
 DeliveryZone
 Customer
+CustomerAdminPermission
 CustomerAddress
 Category
 Product
@@ -432,110 +491,22 @@ OrderItemOption
 Payment
 OrderStatusHistory
 LoyaltyProgram
-CustomerLoyalty
+CustomerLoyaltyCard
 LoyaltyTransaction
 NotificationLog
 ```
 
-### 7.2 Models planejados para Auth
-
-O schema atual usa `Customer` também como entidade de autenticação.
-
-Para Auth completo, o `Customer` deve receber ou já prever:
-
-```txt
-passwordHash
-role
-refreshTokenHash
-lastLoginAt
-```
-
-Recomendação de enum futuro:
-
-```txt
-UserRole:
-CUSTOMER
-ADMIN
-```
+`NotificationLog` existe no schema como estrutura futura/logística, mas o módulo de notificações automáticas não faz parte do MVP atual.
 
 ---
 
-## 8. Resumo dos Models do Banco
+### 9.2 Auth no Customer
 
-### Store
+O schema usa `Customer` também como entidade de autenticação.
 
-Representa a loja principal.
-
-Campos principais:
+Campos relevantes:
 
 ```txt
-id
-name
-slug
-logoUrl
-whatsappNumber
-ifoodUrl
-pixKey
-pixKeyType
-rating
-minDeliveryMinutes
-maxDeliveryMinutes
-minimumOrderAmount
-isActive
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-deliveryZones
-categories
-products
-optionGroups
-orders
-loyaltyPrograms
-```
-
----
-
-### DeliveryZone
-
-Representa bairro/zona de entrega.
-
-Campos principais:
-
-```txt
-id
-storeId
-neighborhood
-city
-state
-deliveryFee
-isAvailable
-displayOrder
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-store
-addresses
-orders
-```
-
----
-
-### Customer
-
-Representa cliente guest, manual ou Google.
-
-Campos principais atuais:
-
-```txt
-id
 customerCode
 fullName
 email
@@ -543,529 +514,48 @@ phone
 cpf
 authProvider
 authProviderId
+role
+adminPermissions  (relação com CustomerAdminPermission)
+passwordHash
+refreshTokenHash
+lastLoginAt
 isGuest
 isActive
 createdAt
 updatedAt
 ```
 
-Campos planejados para Auth:
+Roles:
 
 ```txt
-passwordHash
-role
-refreshTokenHash
-lastLoginAt
+CUSTOMER
+STAFF
+ADMIN
 ```
 
-Relacionamentos:
+Providers:
 
 ```txt
-addresses
-orders
-customerLoyalties
-notificationLogs
-```
-
----
-
-### CustomerAddress
-
-Representa endereço do cliente.
-
-Campos principais:
-
-```txt
-id
-customerId
-deliveryZoneId
-label
-street
-number
-complement
-referencePoint
-neighborhood
-city
-state
-isDefault
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-customer
-deliveryZone
-orders
+MANUAL
+GOOGLE
+GUEST
 ```
 
 ---
 
-### Category
-
-Representa categoria do cardápio.
-
-Campos principais:
-
-```txt
-id
-storeId
-name
-slug
-displayOrder
-isActive
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-store
-products
-```
-
----
-
-### Product
-
-Representa produto principal.
-
-Campos principais:
-
-```txt
-id
-storeId
-categoryId
-name
-slug
-description
-emoji
-imageUrl
-basePrice
-oldPrice
-badge
-productType
-isFeatured
-isOffer
-isActive
-displayOrder
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-store
-category
-variants
-productOptionGroups
-orderItems
-```
-
----
-
-### ProductVariant
-
-Representa tamanho/preço do produto.
-
-Campos principais:
-
-```txt
-id
-productId
-name
-price
-isDefault
-isActive
-displayOrder
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-product
-orderItems
-```
-
----
-
-### OptionGroup
-
-Representa grupo de opções.
-
-Campos principais:
-
-```txt
-id
-storeId
-name
-slug
-selectionType
-minSelected
-maxSelected
-isRequired
-isActive
-displayOrder
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-store
-options
-productOptionGroups
-orderItemOptions
-```
-
----
-
-### Option
-
-Representa opção dentro de um grupo.
-
-Campos principais:
-
-```txt
-id
-optionGroupId
-name
-description
-emoji
-additionalPrice
-isActive
-displayOrder
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-optionGroup
-orderItemOptions
-```
-
----
-
-### ProductOptionGroup
-
-Representa vínculo entre produto e grupo de opções.
-
-Campos principais:
-
-```txt
-id
-productId
-optionGroupId
-minSelected
-maxSelected
-isRequired
-displayOrder
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-product
-optionGroup
-```
-
----
-
-### Order
-
-Representa o pedido.
-
-Campos principais:
-
-```txt
-id
-storeId
-customerId
-customerAddressId
-deliveryZoneId
-orderNumber
-customerName
-customerPhone
-customerEmail
-deliveryNeighborhood
-deliveryAddressText
-subtotalAmount
-deliveryFee
-discountAmount
-totalAmount
-paymentMethod
-paymentStatus
-orderStatus
-changeForAmount
-notes
-whatsappMessage
-source
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-store
-customer
-customerAddress
-deliveryZone
-items
-payments
-statusHistory
-loyaltyLogs
-notifications
-```
-
----
-
-### OrderItem
-
-Representa item do pedido.
-
-Campos principais:
-
-```txt
-id
-orderId
-productId
-productVariantId
-productName
-variantName
-quantity
-unitPrice
-optionsAmount
-totalAmount
-itemDescription
-createdAt
-```
-
-Relacionamentos:
-
-```txt
-order
-product
-productVariant
-options
-```
-
----
-
-### OrderItemOption
-
-Representa opção escolhida em um item.
-
-Campos principais:
-
-```txt
-id
-orderItemId
-optionGroupId
-optionId
-groupName
-optionName
-additionalPrice
-createdAt
-```
-
-Relacionamentos:
-
-```txt
-orderItem
-optionGroup
-option
-```
-
----
-
-### Payment
-
-Representa pagamento do pedido.
-
-Campos principais:
-
-```txt
-id
-orderId
-paymentMethod
-status
-amount
-provider
-providerPaymentId
-pixQrCode
-pixCopyPaste
-pixExpiresAt
-installments
-cardBrand
-cardLastDigits
-paidAt
-failedReason
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-order
-```
-
----
-
-### OrderStatusHistory
-
-Registra histórico de status.
-
-Campos principais:
-
-```txt
-id
-orderId
-oldStatus
-newStatus
-description
-createdBy
-createdAt
-```
-
-Relacionamentos:
-
-```txt
-order
-```
-
----
-
-### LoyaltyProgram
-
-Representa programa de fidelidade.
-
-Campos principais:
-
-```txt
-id
-storeId
-name
-purchasesRequired
-minimumOrderAmount
-rewardDescription
-isActive
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-store
-customerLoyalties
-```
-
----
-
-### CustomerLoyalty
-
-Representa progresso do cliente na fidelidade.
-
-Campos principais:
-
-```txt
-id
-customerId
-loyaltyProgramId
-currentStamps
-totalStamps
-rewardsAvailable
-rewardsRedeemed
-lastStampAt
-createdAt
-updatedAt
-```
-
-Relacionamentos:
-
-```txt
-customer
-loyaltyProgram
-transactions
-```
-
----
-
-### LoyaltyTransaction
-
-Representa movimentação de fidelidade.
-
-Campos principais:
-
-```txt
-id
-customerLoyaltyId
-orderId
-transactionType
-quantity
-description
-createdAt
-```
-
-Relacionamentos:
-
-```txt
-customerLoyalty
-order
-```
-
----
-
-### NotificationLog
-
-Representa log de notificação.
-
-Campos principais:
-
-```txt
-id
-orderId
-customerId
-channel
-recipient
-message
-status
-sentAt
-errorMessage
-createdAt
-```
-
-Relacionamentos:
-
-```txt
-order
-customer
-```
-
----
-
-## 9. Enums do Banco
+## 10. Enums do banco
 
 ```txt
 AuthProvider
+UserRole
+AdminPermission
 ProductType
 SelectionType
 PaymentMethod
 PaymentStatus
 OrderStatus
 OrderSource
+LoyaltyCardStatus
 LoyaltyTransactionType
 NotificationChannel
 NotificationStatus
@@ -1078,6 +568,31 @@ GOOGLE
 GUEST
 MANUAL
 ```
+
+### UserRole
+
+```txt
+CUSTOMER
+STAFF
+ADMIN
+```
+
+### AdminPermission
+
+```txt
+MANAGE_DASHBOARD
+MANAGE_ORDERS
+MANAGE_PRODUCTS
+MANAGE_PAYMENTS
+MANAGE_CUSTOMERS
+MANAGE_LOYALTY
+MANAGE_STORE
+MANAGE_DELIVERY_ZONES
+MANAGE_UPLOADS
+MANAGE_USERS
+```
+
+Permissões aplicadas a usuários com role `STAFF` para controle granular de acesso às funcionalidades administrativas.
 
 ### ProductType
 
@@ -1101,6 +616,12 @@ PIX
 CREDIT_ONLINE
 CARD_ON_DELIVERY
 CASH_ON_DELIVERY
+```
+
+Observação:
+
+```txt
+CREDIT_ONLINE existe no schema, mas cartão online ficou para uma evolução futura.
 ```
 
 ### PaymentStatus
@@ -1134,41 +655,889 @@ IFOOD
 ADMIN
 ```
 
+### LoyaltyCardStatus
+
+```txt
+ACTIVE
+REWARD_AVAILABLE
+REDEEMED
+EXPIRED
+CANCELED
+```
+
 ### LoyaltyTransactionType
 
 ```txt
 STAMP_EARNED
-REWARD_GRANTED
+REWARD_AVAILABLE
 REWARD_REDEEMED
+CARD_EXPIRED
 ADJUSTMENT
-```
-
-### NotificationChannel
-
-```txt
-WHATSAPP
-EMAIL
-SMS
-```
-
-### NotificationStatus
-
-```txt
-PENDING
-SENT
-FAILED
-```
-
-### UserRole planejado
-
-```txt
-CUSTOMER
-ADMIN
 ```
 
 ---
 
-## 10. Migrations
+## 11. Regras de negócio
+
+### 11.1 Preço
+
+O frontend pode calcular preço para exibição.
+
+O backend sempre recalcula:
+
+```txt
+product.basePrice
+productVariant.price
+option.additionalPrice
+deliveryZone.deliveryFee
+```
+
+Não existe bloqueio por pedido mínimo no checkout.
+
+O valor mínimo é usado apenas para decidir se um pedido pontua ou não na fidelidade.
+
+---
+
+### 11.2 Carrinho
+
+O carrinho fica no frontend.
+
+Sugestão:
+
+```txt
+Zustand + localStorage
+```
+
+Não há tabela de carrinho no MVP.
+
+---
+
+### 11.3 Compra sem login
+
+Pedido sem login:
+
+```txt
+cria customer guest
+não gera customerCode
+não soma fidelidade
+pode acompanhar pelo tracking público com número do pedido + telefone
+```
+
+Regra importante:
+
+```txt
+Customer guest não deve salvar email/cpf únicos quando isso puder causar conflito de unique constraint.
+Dados informados no checkout devem ficar no próprio Order.
+```
+
+---
+
+### 11.4 Compra com login
+
+Pedido com login:
+
+```txt
+usa cliente autenticado
+vincula pedido ao customer do token
+pode consultar /orders/my-orders
+pode consultar /orders/my-orders/:id
+pode gerenciar endereços em /customers/me/addresses
+pode participar da fidelidade
+```
+
+---
+
+### 11.5 Tracking público
+
+Endpoint:
+
+```txt
+GET /orders/tracking/:orderNumber?phone=71999999999
+```
+
+Retorna apenas dados básicos:
+
+```txt
+orderNumber
+customerName
+customerPhone
+orderStatus
+paymentStatus
+paymentMethod
+totalAmount
+createdAt
+updatedAt
+```
+
+Não retorna:
+
+```txt
+endereço completo
+CPF
+e-mail
+itens detalhados
+histórico interno
+```
+
+---
+
+### 11.6 Pagamento
+
+Métodos atuais:
+
+```txt
+PIX Banco Inter
+Dinheiro na entrega
+Cartão na entrega
+```
+
+Futuro:
+
+```txt
+Cartão online / PagBank
+```
+
+Ao criar pedido:
+
+```txt
+paymentStatus = PENDING
+orderStatus = CREATED ou AWAITING_PAYMENT, conforme regra do método
+```
+
+Ao confirmar pagamento:
+
+```txt
+paymentStatus = PAID
+```
+
+O status operacional do pedido segue fluxo separado:
+
+```txt
+CREATED
+AWAITING_PAYMENT
+PAID
+PREPARING
+OUT_FOR_DELIVERY
+DELIVERED
+CANCELED
+```
+
+---
+
+### 11.7 PIX Banco Inter
+
+Fluxo atual:
+
+```txt
+1. Cliente cria pedido.
+2. Backend cria Payment PENDING.
+3. Frontend/admin chama POST /payments/order/:orderId/pix.
+4. Backend gera cobrança PIX no Banco Inter.
+5. Backend salva providerPaymentId, pixCopyPaste, pixQrCode e pixExpiresAt.
+6. Cliente paga o PIX.
+7. Enquanto estiver local, backend consulta manualmente GET /payments/:paymentId/pix.
+8. Se estiver pago no Inter, backend atualiza Payment.status = PAID e Order.paymentStatus = PAID.
+```
+
+Webhook preparado para produção:
+
+```txt
+POST /payments/webhook/inter
+```
+
+Em localhost, o webhook não será chamado pelo Inter sem URL pública.
+
+---
+
+### 11.8 Pagamentos manuais
+
+Métodos permitidos:
+
+```txt
+CASH_ON_DELIVERY
+CARD_ON_DELIVERY
+```
+
+Criar pagamento manual:
+
+```txt
+POST /payments/order/:orderId/manual
+```
+
+Body dinheiro:
+
+```json
+{
+  "paymentMethod": "CASH_ON_DELIVERY",
+  "description": "Cliente pagará em dinheiro."
+}
+```
+
+Body cartão na entrega:
+
+```json
+{
+  "paymentMethod": "CARD_ON_DELIVERY",
+  "description": "Cliente pagará na maquininha."
+}
+```
+
+Confirmar pagamento recebido:
+
+```txt
+PATCH /payments/:paymentId/status
+```
+
+Body:
+
+```json
+{
+  "paymentStatus": "PAID",
+  "reason": "Pagamento recebido na entrega."
+}
+```
+
+---
+
+### 11.9 WhatsApp
+
+A `whatsappMessage` gerada no pedido é para a loja receber/ver o resumo do pedido.
+
+O envio automático por WhatsApp não faz parte do MVP atual.
+
+No MVP:
+
+```txt
+loja acompanha pedidos pelo dashboard
+cliente acompanha pelo app/tracking
+```
+
+---
+
+### 11.10 Fidelidade
+
+A fidelidade funciona por cartões/ciclos.
+
+Regra geral:
+
+```txt
+Cliente logado tem um cartão fidelidade ativo.
+Cartão vale por 10 meses.
+A cada pedido válido, ganha 1 carimbo.
+Ao completar 10 carimbos, libera o brinde.
+Admin marca o brinde como retirado.
+Cartão atual vira REDEEMED.
+Novo cartão nasce ACTIVE com 0 carimbos.
+Se passar de 10 meses, cartão vira EXPIRED.
+```
+
+O carimbo só entra quando:
+
+```txt
+paymentStatus = PAID
+orderStatus = DELIVERED
+cliente não é guest
+pedido ainda não gerou carimbo
+pedido bate o valor mínimo do programa
+cartão está ACTIVE
+cartão não venceu
+```
+
+Status do cartão:
+
+```txt
+ACTIVE
+REWARD_AVAILABLE
+REDEEMED
+EXPIRED
+CANCELED
+```
+
+Rotas administrativas importantes:
+
+```txt
+POST /loyalty/cards/:id/redeem
+  marca o brinde como retirado e cria novo cartão ativo
+
+POST /loyalty/cards/:id/adjust
+  ajusta carimbos manualmente
+
+POST /loyalty/cards/expire-overdue
+  expira todos os cartões vencidos
+```
+
+Observação para Postman:
+
+```txt
+POST /loyalty/cards/expire-overdue não precisa de body.
+Se enviar Content-Type: application/json com body vazio, pode ocorrer Unexpected end of JSON input.
+Use Body none ou envie {}.
+```
+
+---
+
+## 12. Autenticação e autorização
+
+### 12.1 Auth manual
+
+Rotas:
+
+```txt
+POST /auth/register
+POST /auth/login
+POST /auth/refresh
+POST /auth/logout
+GET  /auth/me
+```
+
+Fluxo:
+
+```txt
+register cria customer manual
+login retorna accessToken e refreshToken
+refresh gera novo accessToken
+logout remove refreshTokenHash
+me retorna usuário autenticado
+```
+
+Header:
+
+```txt
+Authorization: Bearer ACCESS_TOKEN
+```
+
+---
+
+### 12.2 Google Login
+
+Rota:
+
+```txt
+POST /auth/google
+```
+
+Body:
+
+```json
+{
+  "idToken": "GOOGLE_ID_TOKEN"
+}
+```
+
+Fluxo:
+
+```txt
+1. Frontend obtém idToken com Google Identity Services.
+2. Backend valida idToken com google-auth-library.
+3. Backend busca customer por authProvider GOOGLE + authProviderId.
+4. Se não encontrar, busca por e-mail.
+5. Se encontrar por e-mail, vincula a conta ao Google.
+6. Se não encontrar, cria novo customer.
+7. Retorna accessToken e refreshToken.
+```
+
+Campos criados/atualizados:
+
+```txt
+authProvider = GOOGLE
+authProviderId = sub do Google
+isGuest = false
+isActive = true
+lastLoginAt = data atual
+```
+
+---
+
+### 12.3 Roles
+
+Roles atuais:
+
+```txt
+CUSTOMER  — cliente padrão
+STAFF     — operador com permissões granulares via AdminPermission
+ADMIN     — acesso total ao sistema
+```
+
+Para promover usuário para admin em desenvolvimento:
+
+```sql
+UPDATE customers
+SET role = 'ADMIN'
+WHERE email = 'admin@example.com';
+```
+
+Para promover para staff (operador com permissões específicas):
+
+```sql
+UPDATE customers
+SET role = 'STAFF'
+WHERE email = 'operador@example.com';
+```
+
+As permissões do staff são configuradas individualmente via `PATCH /admin/users/:id/permissions`.
+
+---
+
+### 12.4 Alteração de senha
+
+Rota:
+
+```txt
+PATCH /auth/me/password
+```
+
+Requer JWT do usuário autenticado.
+
+Body:
+
+```json
+{
+  "currentPassword": "senha_atual",
+  "newPassword": "nova_senha"
+}
+```
+
+---
+
+## 13. Uploads
+
+Uploads são locais no MVP.
+
+Pastas:
+
+```txt
+uploads/products
+uploads/store
+```
+
+Rotas:
+
+```txt
+POST   /uploads/products
+POST   /uploads/store-logo
+DELETE /uploads/:folder/:filename
+```
+
+Proteção:
+
+```txt
+ADMIN
+```
+
+Tipos permitidos:
+
+```txt
+image/jpeg
+image/png
+image/webp
+```
+
+Tamanho máximo:
+
+```txt
+5MB
+```
+
+Arquivos são servidos por:
+
+```txt
+/uploads/products/NOME_DO_ARQUIVO
+/uploads/store/NOME_DO_ARQUIVO
+```
+
+Configuração necessária em `main.ts`:
+
+```ts
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'node:path';
+
+const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+app.useStaticAssets(join(process.cwd(), 'uploads'), {
+  prefix: '/uploads/',
+});
+```
+
+---
+
+## 14. Dashboard administrativo
+
+Todas as rotas do dashboard são protegidas por:
+
+```txt
+JwtAuthGuard
+RolesGuard
+ADMIN
+```
+
+Rotas:
+
+```txt
+GET /dashboard/summary
+GET /dashboard/orders
+GET /dashboard/orders/pending
+GET /dashboard/revenue
+GET /dashboard/payments
+GET /dashboard/customers
+GET /dashboard/loyalty
+```
+
+### Fila de pedidos pendentes
+
+Rota:
+
+```txt
+GET /dashboard/orders/pending
+```
+
+Uso:
+
+```txt
+Fila operacional da loja.
+Mostra pedidos que ainda precisam de ação.
+```
+
+Inclui status:
+
+```txt
+CREATED
+AWAITING_PAYMENT
+PAID
+PREPARING
+OUT_FOR_DELIVERY
+```
+
+Não inclui:
+
+```txt
+DELIVERED
+CANCELED
+```
+
+Ordenação:
+
+```txt
+createdAt ASC
+```
+
+Ou seja, o pedido mais antigo aparece primeiro.
+
+---
+
+## 15. Rotas públicas
+
+```txt
+GET  /store/current
+
+GET  /delivery-zones
+GET  /delivery-zones/:id
+
+GET  /categories
+GET  /categories/:id
+
+GET  /products
+GET  /products/:id
+GET  /products/:productId/variants
+GET  /products/:productId/option-groups
+
+GET  /options/groups
+GET  /options/groups/:id
+
+POST /orders
+GET  /orders/tracking/:orderNumber?phone=71999999999
+
+POST /auth/register
+POST /auth/login
+POST /auth/refresh
+POST /auth/google
+
+POST /payments/webhook/inter
+```
+
+Observação:
+
+```txt
+Webhook é público tecnicamente, mas deve ser validado por segurança conforme estratégia definida para produção.
+```
+
+---
+
+## 16. Rotas de cliente autenticado
+
+```txt
+GET   /auth/me
+POST  /auth/logout
+PATCH /auth/me/password
+
+GET   /customers/me
+PATCH /customers/me
+
+GET    /customers/me/addresses
+POST   /customers/me/addresses
+PATCH  /customers/me/addresses/:id
+DELETE /customers/me/addresses/:id
+
+GET /orders/my-orders
+GET /orders/my-orders/:id
+
+GET /loyalty/me
+GET /loyalty/cards
+GET /loyalty/cards/:id
+```
+
+---
+
+## 17. Rotas administrativas
+
+### Admin Users
+
+```txt
+GET    /admin/users               lista usuários admin/staff (ADMIN)
+GET    /admin/users/:id           detalhe de usuário (ADMIN)
+POST   /admin/users               cria usuário admin/staff (ADMIN)
+PATCH  /admin/users/:id           atualiza dados do usuário (ADMIN)
+PATCH  /admin/users/:id/role      altera role do usuário (ADMIN)
+PATCH  /admin/users/:id/status    ativa/desativa usuário (ADMIN)
+PATCH  /admin/users/:id/permissions  define permissões do staff (ADMIN)
+DELETE /admin/users/:id           remove usuário (ADMIN)
+```
+
+### Admin Customers
+
+```txt
+GET    /admin/customers           lista clientes com filtros (ADMIN/STAFF)
+GET    /admin/customers/:id       detalhe do cliente (ADMIN/STAFF)
+PATCH  /admin/customers/:id       atualiza dados do cliente (ADMIN/STAFF)
+PATCH  /admin/customers/:id/status  ativa/desativa cliente (ADMIN/STAFF)
+```
+
+### Store
+
+```txt
+POST   /store/current
+PATCH  /store/current
+DELETE /store/:id
+```
+
+### Delivery Zones
+
+```txt
+POST   /delivery-zones
+PATCH  /delivery-zones/:id
+DELETE /delivery-zones/:id
+```
+
+### Categories
+
+```txt
+POST   /categories
+PATCH  /categories/:id
+DELETE /categories/:id
+```
+
+### Products
+
+```txt
+POST   /products
+PATCH  /products/:id
+DELETE /products/:id
+```
+
+### Product Variants
+
+```txt
+POST   /products/:productId/variants
+PATCH  /products/:productId/variants/:variantId
+DELETE /products/:productId/variants/:variantId
+```
+
+### Product Option Groups
+
+```txt
+POST   /products/:productId/option-groups
+PATCH  /products/:productId/option-groups/:id
+DELETE /products/:productId/option-groups/:id
+```
+
+Observação:
+
+```txt
+:id no PATCH/DELETE é o ID do vínculo product_option_groups, não é o optionGroupId.
+```
+
+### Options
+
+```txt
+POST   /options/groups
+PATCH  /options/groups/:id
+DELETE /options/groups/:id
+POST   /options/groups/:groupId/options
+PATCH  /options/:id
+DELETE /options/:id
+```
+
+### Orders
+
+```txt
+GET    /orders
+GET    /orders/:id
+PATCH  /orders/:id/status
+PATCH  /orders/:id/payment-status
+```
+
+### Customers
+
+```txt
+GET    /customers
+GET    /customers/:id
+```
+
+### Loyalty
+
+```txt
+GET    /loyalty/programs
+POST   /loyalty/programs
+PATCH  /loyalty/programs/:id
+DELETE /loyalty/programs/:id
+GET    /loyalty/customer/:customerId
+POST   /loyalty/cards/:id/redeem
+POST   /loyalty/cards/:id/adjust
+POST   /loyalty/cards/expire-overdue
+```
+
+### Payments
+
+```txt
+GET    /payments
+GET    /payments/:id
+GET    /payments/order/:orderId
+POST   /payments/order/:orderId/pix
+GET    /payments/:id/pix
+POST   /payments/order/:orderId/manual
+PATCH  /payments/:id/status
+```
+
+### Dashboard
+
+```txt
+GET /dashboard/summary
+GET /dashboard/orders
+GET /dashboard/orders/pending
+GET /dashboard/revenue
+GET /dashboard/payments
+GET /dashboard/customers
+GET /dashboard/loyalty
+```
+
+### Uploads
+
+```txt
+POST   /uploads/products
+POST   /uploads/store-logo
+DELETE /uploads/:folder/:filename
+```
+
+---
+
+## 18. Fluxo atual do pedido
+
+```txt
+1. Cliente consulta loja.
+2. Cliente consulta bairros.
+3. Cliente consulta categorias.
+4. Cliente consulta produtos.
+5. Cliente consulta variações.
+6. Cliente consulta grupos de opções por produto.
+7. Frontend monta o carrinho.
+8. Cliente finaliza pedido sem login ou com login.
+9. Se não houver token, backend cria customer guest.
+10. Se houver token, backend vincula o pedido ao customer autenticado.
+11. Backend cria dados/endereço do pedido.
+12. Backend recalcula todos os valores.
+13. Backend cria pedido.
+14. Backend cria itens.
+15. Backend cria opções dos itens.
+16. Backend cria payment pendente.
+17. Backend cria histórico de status.
+18. Backend gera whatsappMessage/resumo.
+19. Cliente pode acompanhar via tracking público ou área logada.
+20. Admin acompanha pelo dashboard.
+21. Se PIX, backend gera cobrança Inter.
+22. Se pagamento manual, admin confirma recebimento.
+23. Admin atualiza status operacional.
+24. Ao entregar pedido pago de cliente logado, fidelidade tenta adicionar carimbo.
+```
+
+---
+
+## 19. Payments
+
+### 19.1 Listagem
+
+Rota:
+
+```txt
+GET /payments
+```
+
+Recomendação:
+
+```txt
+Ordenar por updatedAt DESC.
+```
+
+Motivo:
+
+```txt
+O Payment nasce com o pedido e pode ser atualizado depois quando o PIX é gerado.
+Ordenar por createdAt pode deixar pagamentos recém-atualizados longe da primeira página.
+```
+
+---
+
+### 19.2 PIX
+
+Criar cobrança PIX:
+
+```txt
+POST /payments/order/:orderId/pix
+```
+
+Consultar/sincronizar PIX:
+
+```txt
+GET /payments/:paymentId/pix
+```
+
+Resposta esperada na criação:
+
+```txt
+providerPaymentId
+pixCopyPaste
+pixQrCode
+pixExpiresAt
+status = PENDING
+```
+
+---
+
+### 19.3 Manual
+
+Criar pagamento manual:
+
+```txt
+POST /payments/order/:orderId/manual
+```
+
+Confirmar/alterar status:
+
+```txt
+PATCH /payments/:paymentId/status
+```
+
+---
+
+## 20. Migrations
 
 ### Migration inicial
 
@@ -1191,7 +1560,7 @@ npx prisma migrate dev --name init
 
 ---
 
-### Migration de sequence do pedido
+### Sequence do pedido
 
 Cria sequence para número do pedido:
 
@@ -1213,28 +1582,7 @@ PED-000003
 
 ---
 
-### Migration planejada para Auth
-
-Deve adicionar ao `Customer`:
-
-```txt
-passwordHash
-role
-refreshTokenHash
-lastLoginAt
-```
-
-E criar enum:
-
-```txt
-UserRole
-```
-
----
-
-### Migration planejada para customerCode
-
-O campo `customerCode` já existe no `Customer`.
+### Sequence do customerCode
 
 Regra:
 
@@ -1255,7 +1603,7 @@ Pode usar sequence própria no PostgreSQL.
 
 ---
 
-## 11. Seed
+## 21. Seed
 
 Arquivo:
 
@@ -1263,18 +1611,23 @@ Arquivo:
 prisma/seed.ts
 ```
 
-Responsabilidades:
+O seed real fica para o final porque depende dos dados do cliente.
+
+Quando o cliente enviar os dados, o seed deve criar:
 
 ```txt
-criar loja inicial
-criar bairros
-criar categorias
-criar produtos
-criar variações
-criar grupos de opções
-criar opções
-criar vínculos ProductOptionGroup
-criar programa de fidelidade inicial
+loja real
+logo real
+categorias reais
+produtos reais
+variações reais
+opções/adicionais reais
+grupos de opções reais
+vínculos ProductOptionGroup
+bairros reais
+taxas reais
+programa de fidelidade real
+admin inicial
 ```
 
 Comando:
@@ -1285,680 +1638,241 @@ npx prisma db seed
 
 ---
 
-## 12. Rotas Atuais e Planejadas
+## 22. Ordem de testes recomendada
 
-### 12.1 Store
-
-```txt
-GET    /store/current
-POST   /store/current
-PATCH  /store/current
-DELETE /store/:id
-```
-
-Proteção futura:
-
-```txt
-GET    público
-POST   ADMIN
-PATCH  ADMIN
-DELETE ADMIN
-```
-
----
-
-### 12.2 Delivery Zones
-
-```txt
-GET    /delivery-zones
-GET    /delivery-zones/:id
-POST   /delivery-zones
-PATCH  /delivery-zones/:id
-DELETE /delivery-zones/:id
-```
-
-Proteção futura:
-
-```txt
-GET    público
-POST   ADMIN
-PATCH  ADMIN
-DELETE ADMIN
-```
-
-Rota futura opcional:
-
-```txt
-GET /delivery-zones/available
-```
-
----
-
-### 12.3 Categories
-
-```txt
-GET    /categories
-GET    /categories/:id
-POST   /categories
-PATCH  /categories/:id
-DELETE /categories/:id
-```
-
-Proteção futura:
-
-```txt
-GET    público
-POST   ADMIN
-PATCH  ADMIN
-DELETE ADMIN
-```
-
----
-
-### 12.4 Products
-
-```txt
-GET    /products
-GET    /products/:id
-POST   /products
-PATCH  /products/:id
-DELETE /products/:id
-```
-
-Rotas futuras/opcionais:
-
-```txt
-GET /products/featured
-GET /products/offers
-```
-
-Proteção futura:
-
-```txt
-GET    público
-POST   ADMIN
-PATCH  ADMIN
-DELETE ADMIN
-```
-
----
-
-### 12.5 Product Variants
-
-```txt
-GET    /products/:productId/variants
-POST   /products/:productId/variants
-PATCH  /products/:productId/variants/:variantId
-DELETE /products/:productId/variants/:variantId
-```
-
-Proteção futura:
-
-```txt
-GET    público
-POST   ADMIN
-PATCH  ADMIN
-DELETE ADMIN
-```
-
----
-
-### 12.6 Options
-
-```txt
-GET    /options/groups
-GET    /options/groups/:id
-POST   /options/groups
-PATCH  /options/groups/:id
-DELETE /options/groups/:id
-
-POST   /options/groups/:groupId/options
-PATCH  /options/:id
-DELETE /options/:id
-```
-
-Proteção futura:
-
-```txt
-GET    público
-POST   ADMIN
-PATCH  ADMIN
-DELETE ADMIN
-```
-
----
-
-### 12.7 Product Option Groups
-
-```txt
-GET    /products/:productId/option-groups
-POST   /products/:productId/option-groups
-PATCH  /products/:productId/option-groups/:id
-DELETE /products/:productId/option-groups/:id
-```
-
-Observação:
-
-```txt
-:id no PATCH/DELETE é o ID do vínculo product_option_groups
-não é o optionGroupId
-```
-
-Proteção futura:
-
-```txt
-GET    público
-POST   ADMIN
-PATCH  ADMIN
-DELETE ADMIN
-```
-
----
-
-### 12.8 Orders
-
-```txt
-GET    /orders
-GET    /orders/:id
-POST   /orders
-PATCH  /orders/:id/status
-PATCH  /orders/:id/payment-status
-```
-
-Proteção futura:
-
-```txt
-POST   público ou OptionalJwtAuthGuard
-GET    /orders                    ADMIN
-GET    /orders/:id                tracking seguro, dono do pedido ou ADMIN
-PATCH  /orders/:id/status         ADMIN
-PATCH  /orders/:id/payment-status ADMIN
-```
-
-Rotas futuras:
-
-```txt
-GET /orders/my-orders
-GET /orders/my-orders/:id
-GET /orders/:id/tracking
-```
-
----
-
-### 12.9 Auth
-
-Rotas planejadas:
-
-```txt
-POST /auth/register
-POST /auth/login
-POST /auth/google
-POST /auth/guest
-POST /auth/refresh
-POST /auth/logout
-GET  /auth/me
-```
-
-Proteção:
-
-```txt
-register público
-login público
-google público
-guest público
-refresh público com refresh token
-logout autenticado
-me autenticado
-```
-
----
-
-### 12.10 Customers
-
-Rotas planejadas:
-
-```txt
-GET    /customers
-GET    /customers/:id
-GET    /customers/me
-PATCH  /customers/me
-PATCH  /customers/:id
-DELETE /customers/:id
-```
-
-Endereços planejados:
-
-```txt
-GET    /customers/me/addresses
-POST   /customers/me/addresses
-PATCH  /customers/me/addresses/:id
-DELETE /customers/me/addresses/:id
-```
-
-Proteção:
-
-```txt
-/customers/me                   CUSTOMER ou ADMIN
-/customers/me/addresses         CUSTOMER ou ADMIN
-/customers                      ADMIN
-/customers/:id                  ADMIN
-```
-
----
-
-### 12.11 Payments
-
-Rotas planejadas:
-
-```txt
-GET    /payments
-GET    /payments/:id
-GET    /payments/order/:orderId
-PATCH  /payments/:id/status
-POST   /payments/webhook
-```
-
-Proteção:
-
-```txt
-GET/PATCH ADMIN
-webhook protegido por assinatura/token do gateway
-```
-
----
-
-### 12.12 Notifications
-
-Rotas planejadas:
-
-```txt
-GET    /notifications
-GET    /notifications/:id
-POST   /notifications/orders/:orderId/resend
-```
-
-Proteção:
-
-```txt
-ADMIN
-```
-
----
-
-### 12.13 Loyalty
-
-Rotas planejadas:
-
-```txt
-GET    /loyalty/me
-GET    /loyalty/customer/:customerId
-GET    /loyalty/programs
-POST   /loyalty/programs
-PATCH  /loyalty/programs/:id
-DELETE /loyalty/programs/:id
-POST   /loyalty/redeem
-POST   /loyalty/customer/:customerId/adjust
-```
-
-Proteção:
-
-```txt
-/loyalty/me              CUSTOMER
-/loyalty/redeem          CUSTOMER
-demais rotas             ADMIN
-```
-
----
-
-### 12.14 Dashboard
-
-Rotas planejadas:
-
-```txt
-GET /dashboard/summary
-GET /dashboard/orders
-GET /dashboard/products
-GET /dashboard/customers
-GET /dashboard/revenue
-GET /dashboard/loyalty
-```
-
-Proteção:
-
-```txt
-ADMIN
-```
-
----
-
-### 12.15 Uploads
-
-Rotas planejadas:
-
-```txt
-POST   /uploads/products
-POST   /uploads/store-logo
-DELETE /uploads/:fileId
-```
-
-Proteção:
-
-```txt
-ADMIN
-```
-
----
-
-## 13. Fluxo Atual do Pedido
-
-Fluxo implementado:
-
-```txt
-1. Cliente consulta loja.
-2. Cliente consulta bairros.
-3. Cliente consulta categorias.
-4. Cliente consulta produtos.
-5. Cliente consulta variações.
-6. Cliente consulta grupos de opções por produto.
-7. Frontend monta o carrinho.
-8. Cliente finaliza sem login.
-9. Backend cria customer guest.
-10. Backend cria endereço.
-11. Backend recalcula todos os valores.
-12. Backend cria pedido.
-13. Backend cria itens.
-14. Backend cria opções dos itens.
-15. Backend cria payment pendente.
-16. Backend cria histórico de status.
-17. Backend gera whatsappMessage.
-18. Frontend abre WhatsApp da loja.
-```
-
----
-
-## 14. Regras de Negócio
-
-### Preço
-
-O frontend pode calcular preço para exibição.
-
-O backend sempre recalcula:
-
-```txt
-product.basePrice
-productVariant.price
-option.additionalPrice
-deliveryZone.deliveryFee
-store.minimumOrderAmount
-```
-
----
-
-### Carrinho
-
-O carrinho fica no frontend.
-
-Sugestão:
-
-```txt
-Zustand + localStorage
-```
-
-Não há tabela de carrinho no MVP.
-
----
-
-### Compra sem login
-
-Pedido sem login:
-
-```txt
-cria customer guest
-não gera customerCode
-não soma fidelidade
-```
-
-Pedido com login no futuro:
-
-```txt
-usa cliente autenticado
-pode gerar customerCode
-pode somar fidelidade
-```
-
----
-
-### Pagamento
-
-MVP:
-
-```txt
-PIX manual
-cartão na entrega manual
-dinheiro manual
-cartão online futuro
-```
-
-Ao criar pedido:
-
-```txt
-paymentStatus = PENDING
-orderStatus = CREATED
-```
-
-Ao confirmar pagamento:
-
-```txt
-paymentStatus = PAID
-orderStatus = PAID
-```
-
----
-
-### WhatsApp
-
-A `whatsappMessage` gerada no pedido é para a loja receber.
-
-Ela não é a mensagem de confirmação do cliente.
-
----
-
-### Fidelidade futura
-
-Regra planejada:
-
-```txt
-cliente autenticado
-pedido DELIVERED
-total >= mínimo do programa
-soma 1 carimbo
-```
-
----
-
-## 15. Rotas Públicas
+### 22.1 Base pública
 
 ```txt
 GET  /store/current
-
 GET  /delivery-zones
 GET  /delivery-zones/:id
-
 GET  /categories
-GET  /categories/:id
-
 GET  /products
 GET  /products/:id
 GET  /products/:productId/variants
 GET  /products/:productId/option-groups
-
 GET  /options/groups
 GET  /options/groups/:id
-
-POST /orders
-
-POST /auth/register
-POST /auth/login
-POST /auth/google
-POST /auth/guest
-POST /auth/refresh
 ```
 
----
-
-## 16. Rotas de Cliente Autenticado
+### 22.2 Auth
 
 ```txt
-GET  /auth/me
-POST /auth/logout
+POST  /auth/register
+POST  /auth/login
+POST  /auth/google
+GET   /auth/me
+POST  /auth/refresh
+PATCH /auth/me/password
+POST  /auth/logout
+```
 
+### 22.3 Cliente
+
+```txt
 GET   /customers/me
 PATCH /customers/me
-
-GET    /customers/me/addresses
-POST   /customers/me/addresses
-PATCH  /customers/me/addresses/:id
+POST  /customers/me/addresses
+GET   /customers/me/addresses
+PATCH /customers/me/addresses/:id
 DELETE /customers/me/addresses/:id
-
-GET /orders/my-orders
-GET /orders/my-orders/:id
-
-GET  /loyalty/me
-POST /loyalty/redeem
 ```
 
----
-
-## 17. Rotas Administrativas
+### 22.4 Pedido
 
 ```txt
-POST   /store/current
-PATCH  /store/current
-DELETE /store/:id
-
-POST   /delivery-zones
-PATCH  /delivery-zones/:id
-DELETE /delivery-zones/:id
-
-POST   /categories
-PATCH  /categories/:id
-DELETE /categories/:id
-
-POST   /products
-PATCH  /products/:id
-DELETE /products/:id
-
-POST   /products/:productId/variants
-PATCH  /products/:productId/variants/:variantId
-DELETE /products/:productId/variants/:variantId
-
-POST   /products/:productId/option-groups
-PATCH  /products/:productId/option-groups/:id
-DELETE /products/:productId/option-groups/:id
-
-POST   /options/groups
-PATCH  /options/groups/:id
-DELETE /options/groups/:id
-POST   /options/groups/:groupId/options
-PATCH  /options/:id
-DELETE /options/:id
-
-GET    /orders
-PATCH  /orders/:id/status
-PATCH  /orders/:id/payment-status
-
-GET    /customers
-GET    /customers/:id
-PATCH  /customers/:id
-DELETE /customers/:id
-
-GET    /payments
-GET    /payments/:id
-PATCH  /payments/:id/status
-
-GET    /notifications
-POST   /notifications/orders/:orderId/resend
-
-GET    /dashboard/summary
-GET    /dashboard/orders
-GET    /dashboard/products
-GET    /dashboard/customers
-
-POST   /uploads/products
-POST   /uploads/store-logo
-DELETE /uploads/:fileId
-```
-
----
-
-## 18. Próxima Etapa Recomendada
-
-A próxima fase deve ser:
-
-```txt
-Auth + Customers + Roles
-```
-
-Ordem sugerida:
-
-```txt
-1. Ajustar schema para Auth
-2. Adicionar UserRole
-3. Adicionar passwordHash no Customer
-4. Adicionar refreshTokenHash no Customer
-5. Criar AuthModule
-6. Criar register
-7. Criar login
-8. Criar JWT
-9. Criar JwtStrategy
-10. Criar JwtAuthGuard
-11. Criar RolesGuard
-12. Criar OptionalJwtAuthGuard
-13. Criar CurrentUser decorator
-14. Criar Roles decorator
-15. Criar CustomersModule
-16. Criar /customers/me
-17. Criar /orders/my-orders
-18. Proteger rotas administrativas
-```
-
----
-
-## 19. Ordem de Testes Recomendada
-
-```txt
-GET  /store/current
-
-GET  /delivery-zones
-GET  /delivery-zones/:id
-
-GET  /categories
-POST /categories
-
-GET  /products
-POST /products
-GET  /products/:productId/variants
-POST /products/:productId/variants
-
-GET  /options/groups
-POST /options/groups
-POST /options/groups/:groupId/options
-
-POST /products/:productId/option-groups
-GET  /products/:productId/option-groups
-PATCH /products/:productId/option-groups/:id
-DELETE /products/:productId/option-groups/:id
-
 POST /orders
+GET  /orders/tracking/:orderNumber?phone=71999999999
+GET  /orders/my-orders
+GET  /orders/my-orders/:id
 GET  /orders
 GET  /orders/:id
 PATCH /orders/:id/payment-status
 PATCH /orders/:id/status
 ```
 
+### 22.5 Payments
+
+```txt
+GET  /payments
+GET  /payments/:id
+GET  /payments/order/:orderId
+POST /payments/order/:orderId/pix
+GET  /payments/:id/pix
+POST /payments/order/:orderId/manual
+PATCH /payments/:id/status
+```
+
+### 22.6 Loyalty
+
+```txt
+POST /loyalty/programs
+GET  /loyalty/programs
+GET  /loyalty/me
+GET  /loyalty/cards
+GET  /loyalty/cards/:id
+GET  /loyalty/customer/:customerId
+POST /loyalty/cards/:id/adjust
+POST /loyalty/cards/:id/redeem
+POST /loyalty/cards/expire-overdue
+```
+
+### 22.7 Dashboard
+
+```txt
+GET /dashboard/summary
+GET /dashboard/orders
+GET /dashboard/orders/pending
+GET /dashboard/revenue
+GET /dashboard/payments
+GET /dashboard/customers
+GET /dashboard/loyalty
+```
+
+### 22.8 Uploads
+
+```txt
+POST   /uploads/products
+POST   /uploads/store-logo
+DELETE /uploads/:folder/:filename
+```
+
+### 22.9 Admin
+
+```txt
+POST   /admin/users
+GET    /admin/users
+GET    /admin/users/:id
+PATCH  /admin/users/:id
+PATCH  /admin/users/:id/role
+PATCH  /admin/users/:id/status
+PATCH  /admin/users/:id/permissions
+DELETE /admin/users/:id
+GET    /admin/customers
+GET    /admin/customers/:id
+PATCH  /admin/customers/:id
+PATCH  /admin/customers/:id/status
+```
+
 ---
 
-## 20. Comandos Úteis
+## 23. Fluxo ponta a ponta recomendado
+
+```txt
+1. Criar/admin logar.
+2. Cadastrar loja.
+3. Cadastrar bairros.
+4. Cadastrar categorias.
+5. Cadastrar produtos.
+6. Cadastrar variações.
+7. Cadastrar grupos/opções/adicionais.
+8. Vincular grupos aos produtos.
+9. Cliente loga com Google.
+10. Cliente cria endereço.
+11. Cliente cria pedido autenticado.
+12. Gerar PIX.
+13. Consultar PIX.
+14. Admin vê pedido em /dashboard/orders/pending.
+15. Admin confirma pagamento ou sincroniza PIX.
+16. Admin muda status para PREPARING.
+17. Admin muda status para OUT_FOR_DELIVERY.
+18. Admin muda status para DELIVERED.
+19. Conferir carimbo na fidelidade.
+20. Cliente consulta /orders/my-orders.
+21. Cliente consulta /loyalty/me.
+```
+
+---
+
+## 24. Docker
+
+### Arquivos
+
+```txt
+Dockerfile        — build da imagem Node 22 Alpine (inclui bcrypt nativo)
+docker-compose.yml — orquestra PostgreSQL + API
+entrypoint.sh     — roda migrations e inicia a aplicação
+.dockerignore     — exclui node_modules, dist, .env, uploads, certs
+```
+
+### Subir tudo com um comando
+
+```bash
+docker compose up --build
+```
+
+Isso irá:
+1. Subir o PostgreSQL 16 e aguardar ele ficar saudável
+2. Fazer build da imagem NestJS
+3. Aplicar todas as migrations Prisma (`prisma migrate deploy`)
+4. Rodar o seed (`prisma db seed`) se `RUN_SEED=true`
+5. Iniciar a API em `http://localhost:3000`
+
+### Subir sem rebuild (após primeiro build)
+
+```bash
+docker compose up
+```
+
+### Parar tudo
+
+```bash
+docker compose down
+```
+
+### Parar e apagar volumes (banco + uploads)
+
+```bash
+docker compose down -v
+```
+
+### Controlar o seed
+
+Por padrão `RUN_SEED=true` no `docker-compose.yml`.
+
+Para subir sem rodar o seed:
+
+```bash
+RUN_SEED=false docker compose up --build
+```
+
+Ou edite a variável diretamente no `docker-compose.yml`.
+
+### Configurações obrigatórias antes do primeiro uso
+
+Edite o `docker-compose.yml` e preencha:
+
+```txt
+JWT_ACCESS_SECRET   — segredo do access token (troque em produção)
+JWT_REFRESH_SECRET  — segredo do refresh token (troque em produção)
+GOOGLE_CLIENT_ID    — Client ID do Google Console (para login com Google)
+```
+
+Para PIX Banco Inter, preencha também:
+
+```txt
+INTER_CLIENT_ID
+INTER_CLIENT_SECRET
+INTER_PIX_KEY
+```
+
+E monte os certificados mTLS via volume adicional no `docker-compose.yml`:
+
+```yaml
+volumes:
+  - ./src/certs:/app/src/certs:ro
+```
+
+### Volumes persistentes
+
+```txt
+postgres_data — dados do banco PostgreSQL
+uploads       — arquivos de imagem enviados via upload
+```
+
+---
+
+## 25. Comandos úteis
 
 Subir em desenvolvimento:
 
@@ -1970,6 +1884,18 @@ Gerar client Prisma:
 
 ```bash
 npx prisma generate
+```
+
+Validar schema:
+
+```bash
+npx prisma validate
+```
+
+Formatar schema:
+
+```bash
+npx prisma format
 ```
 
 Rodar migration:
@@ -2002,8 +1928,72 @@ Resetar banco em desenvolvimento:
 npx prisma migrate reset
 ```
 
+Resetar sem executar seed automaticamente:
+
+```bash
+npx prisma migrate reset --force --skip-seed
+```
+
 ---
 
-## 21. Licença
+## 26. Checklist antes do deploy
+
+```txt
+Remover google-test.html do projeto/versionamento
+Garantir .env fora do git
+Garantir certificados Inter fora do git
+Trocar JWT_ACCESS_SECRET e JWT_REFRESH_SECRET no docker-compose.yml (ou .env produção)
+Preencher GOOGLE_CLIENT_ID e variáveis Inter no docker-compose.yml (ou .env produção)
+Configurar DNS/API pública
+Configurar CORS com domínio real do frontend (FRONTEND_URL)
+Configurar URL pública do webhook Inter
+Montar certificados mTLS via volume no docker-compose.yml
+Validar HTTPS
+Validar uploads persistentes (volume Docker ou storage externo)
+Validar backup do banco (volume postgres_data)
+Validar logs
+Validar usuário admin
+Testar PIX em ambiente correto
+Testar dashboard admin
+Testar pedido guest
+Testar pedido logado
+Testar fidelidade
+```
+
+---
+
+## 27. Próximas etapas recomendadas
+
+Ordem sugerida:
+
+```txt
+1. Revisão final técnica do código.
+2. Swagger.
+3. Testes finais ponta a ponta.
+4. Ajustes finais de produção.
+5. Deploy.
+6. Seed real quando o cliente passar os dados.
+```
+
+---
+
+## 28. Funcionalidades futuras
+
+```txt
+Cartão online / PagBank
+WhatsApp automático oficial
+Notifications module
+Redis para filas/cache, se necessário
+Docker
+Painel administrativo frontend
+Relatórios avançados
+Cupons/descontos
+Horário de funcionamento avançado
+Controle de estoque, se necessário
+```
+
+---
+
+## 29. Licença
 
 Projeto privado pertencente ao **Se Liga no Açaí**.

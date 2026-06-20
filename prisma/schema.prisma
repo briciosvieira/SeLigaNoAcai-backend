@@ -17,6 +17,25 @@ enum AuthProvider {
   MANUAL
 }
 
+enum UserRole {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+enum AdminPermission {
+  MANAGE_DASHBOARD
+  MANAGE_ORDERS
+  MANAGE_PRODUCTS
+  MANAGE_PAYMENTS
+  MANAGE_CUSTOMERS
+  MANAGE_LOYALTY
+  MANAGE_STORE
+  MANAGE_DELIVERY_ZONES
+  MANAGE_UPLOADS
+  MANAGE_USERS
+}
+
 enum ProductType {
   SIMPLE
   CUSTOM
@@ -60,10 +79,19 @@ enum OrderSource {
   ADMIN
 }
 
+enum LoyaltyCardStatus {
+  ACTIVE
+  REWARD_AVAILABLE
+  REDEEMED
+  EXPIRED
+  CANCELED
+}
+
 enum LoyaltyTransactionType {
   STAMP_EARNED
-  REWARD_GRANTED
+  REWARD_AVAILABLE
   REWARD_REDEEMED
+  CARD_EXPIRED
   ADJUSTMENT
 }
 
@@ -100,6 +128,11 @@ model Store {
 
   isActive Boolean @default(true) @map("is_active")
 
+  isOpen                Boolean   @default(false) @map("is_open") // Status atual da loja
+  scheduledIsOpen       Boolean?  @map("scheduled_is_open") // Status futuro agendado
+  availabilityChangeAt  DateTime? @map("availability_change_at") // Horário em que a mudança de status ocorrerá
+  availabilityUpdatedAt DateTime? @map("availability_updated_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -125,7 +158,7 @@ model DeliveryZone {
 
   deliveryFee Decimal @default(0) @map("delivery_fee") @db.Decimal(10, 2)
 
-  isAvailable Boolean @default(true) @map("is_available")
+  isAvailable  Boolean @default(true) @map("is_available")
   displayOrder Int     @default(0) @map("display_order")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -151,19 +184,42 @@ model Customer {
   authProvider   AuthProvider @default(GUEST) @map("auth_provider")
   authProviderId String?      @map("auth_provider_id") @db.VarChar(180)
 
+  role UserRole @default(CUSTOMER)
+
+  adminPermissions CustomerAdminPermission[]
+
+  passwordHash     String?   @map("password_hash")
+  refreshTokenHash String?   @map("refresh_token_hash")
+  lastLoginAt      DateTime? @map("last_login_at")
+
   isGuest  Boolean @default(true) @map("is_guest")
   isActive Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  addresses         CustomerAddress[]
-  orders            Order[]
-  customerLoyalties CustomerLoyalty[]
-  notificationLogs  NotificationLog[]
+  addresses        CustomerAddress[]
+  orders           Order[]
+  loyaltyCards     CustomerLoyaltyCard[]
+  loyalty          CustomerLoyalty?
+  notificationLogs NotificationLog[]
 
   @@unique([authProvider, authProviderId])
   @@map("customers")
+}
+
+model CustomerAdminPermission {
+  id         String          @id @default(uuid())
+  customerId String          @map("customer_id")
+  permission AdminPermission
+  createdAt  DateTime        @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, permission])
+  @@index([customerId])
+  @@index([permission])
+  @@map("customer_admin_permissions")
 }
 
 model CustomerAddress {
@@ -229,8 +285,9 @@ model Product {
   slug        String  @db.VarChar(140)
   description String?
 
-  emoji    String? @db.VarChar(20)
-  imageUrl String? @map("image_url")
+  emoji          String? @db.VarChar(20)
+  imageUrl       String? @map("image_url")
+  mobileImageUrl String? @map("mobile_image_url")
 
   basePrice Decimal  @default(0) @map("base_price") @db.Decimal(10, 2)
   oldPrice  Decimal? @map("old_price") @db.Decimal(10, 2)
@@ -251,6 +308,10 @@ model Product {
   variants            ProductVariant[]
   productOptionGroups ProductOptionGroup[]
   orderItems          OrderItem[]
+
+  promotionsAsBuyProduct    Promotion[]                @relation("PromotionBuyProduct")
+  promotionsAsRewardProduct Promotion[]                @relation("PromotionRewardProduct")
+  promotionEligibleProducts PromotionEligibleProduct[]
 
   @@unique([storeId, slug])
   @@map("products")
@@ -397,11 +458,12 @@ model Order {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  items         OrderItem[]
-  payments      Payment[]
-  statusHistory OrderStatusHistory[]
-  loyaltyLogs   LoyaltyTransaction[]
-  notifications NotificationLog[]
+  items                 OrderItem[]
+  payments              Payment[]
+  statusHistory         OrderStatusHistory[]
+  loyaltyTransactions   LoyaltyTransaction[]
+  loyaltyStampHistories LoyaltyStampHistory[]
+  notifications         NotificationLog[]
 
   @@map("orders")
 }
@@ -448,7 +510,7 @@ model OrderItemOption {
   optionId String? @map("option_id")
   option   Option? @relation(fields: [optionId], references: [id], onDelete: SetNull)
 
-  groupName String @map("group_name") @db.VarChar(100)
+  groupName  String @map("group_name") @db.VarChar(100)
   optionName String @map("option_name") @db.VarChar(100)
 
   additionalPrice Decimal @default(0) @map("additional_price") @db.Decimal(10, 2)
@@ -476,8 +538,8 @@ model Payment {
   pixCopyPaste String?   @map("pix_copy_paste")
   pixExpiresAt DateTime? @map("pix_expires_at")
 
-  installments  Int?
-  cardBrand     String? @map("card_brand") @db.VarChar(40)
+  installments   Int?
+  cardBrand      String? @map("card_brand") @db.VarChar(40)
   cardLastDigits String? @map("card_last_digits") @db.VarChar(4)
 
   paidAt       DateTime? @map("paid_at")
@@ -516,49 +578,60 @@ model LoyaltyProgram {
 
   purchasesRequired  Int     @default(10) @map("purchases_required")
   minimumOrderAmount Decimal @default(16.00) @map("minimum_order_amount") @db.Decimal(10, 2)
+  validityMonths     Int     @default(10) @map("validity_months")
 
-  rewardDescription String? @map("reward_description")
+  rewardDescription String? @map("reward_description") @db.VarChar(255)
 
   isActive Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  customerLoyalties CustomerLoyalty[]
+  cards CustomerLoyaltyCard[]
 
   @@map("loyalty_programs")
 }
 
-model CustomerLoyalty {
+model CustomerLoyaltyCard {
   id String @id @default(uuid())
 
-  customerId String   @map("customer_id")
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId       String @map("customer_id")
+  loyaltyProgramId String @map("loyalty_program_id")
 
-  loyaltyProgramId String         @map("loyalty_program_id")
-  loyaltyProgram   LoyaltyProgram @relation(fields: [loyaltyProgramId], references: [id], onDelete: Cascade)
+  cardNumber Int @map("card_number")
 
-  currentStamps   Int @default(0) @map("current_stamps")
-  totalStamps     Int @default(0) @map("total_stamps")
-  rewardsAvailable Int @default(0) @map("rewards_available")
-  rewardsRedeemed Int @default(0) @map("rewards_redeemed")
+  status LoyaltyCardStatus @default(ACTIVE)
 
-  lastStampAt DateTime? @map("last_stamp_at")
+  currentStamps  Int @default(0) @map("current_stamps")
+  requiredStamps Int @default(10) @map("required_stamps")
+
+  startedAt DateTime @default(now()) @map("started_at")
+  expiresAt DateTime @map("expires_at")
+
+  completedAt DateTime? @map("completed_at")
+  redeemedAt  DateTime? @map("redeemed_at")
+  expiredAt   DateTime? @map("expired_at")
+
+  rewardDescription String @map("reward_description") @db.VarChar(255)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  loyaltyProgram LoyaltyProgram @relation(fields: [loyaltyProgramId], references: [id], onDelete: Cascade)
+
   transactions LoyaltyTransaction[]
 
-  @@unique([customerId, loyaltyProgramId])
-  @@map("customer_loyalty")
+  @@unique([customerId, cardNumber])
+  @@index([customerId, status])
+  @@map("customer_loyalty_cards")
 }
 
 model LoyaltyTransaction {
   id String @id @default(uuid())
 
-  customerLoyaltyId String          @map("customer_loyalty_id")
-  customerLoyalty   CustomerLoyalty @relation(fields: [customerLoyaltyId], references: [id], onDelete: Cascade)
+  loyaltyCardId String              @map("loyalty_card_id")
+  loyaltyCard   CustomerLoyaltyCard @relation(fields: [loyaltyCardId], references: [id], onDelete: Cascade)
 
   orderId String? @map("order_id")
   order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
@@ -566,10 +639,13 @@ model LoyaltyTransaction {
   transactionType LoyaltyTransactionType @map("transaction_type")
   quantity        Int
 
-  description String?
+  description String? @db.VarChar(255)
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@unique([orderId, transactionType])
+  @@index([loyaltyCardId])
+  @@index([orderId])
   @@map("loyalty_transactions")
 }
 
@@ -583,7 +659,7 @@ model NotificationLog {
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   channel   NotificationChannel
-  recipient String? @db.VarChar(120)
+  recipient String?             @db.VarChar(120)
   message   String?
 
   status NotificationStatus @default(PENDING)
@@ -594,4 +670,140 @@ model NotificationLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("notification_logs")
+}
+
+model Banner {
+  id String @id @default(uuid())
+
+  imageUrl       String  @map("image_url")
+  mobileImageUrl String? @map("mobile_image_url")
+  tabletImageUrl String? @map("tablet_image_url")
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("banners")
+}
+
+enum PromotionType {
+  BUY_X_GET_Y
+  PERCENTAGE_DISCOUNT
+  COUPON_PERCENTAGE_DISCOUNT
+}
+
+model Promotion {
+  id String @id @default(uuid())
+
+  name        String
+  description String?
+  type        PromotionType
+
+  couponCode String? @unique @map("coupon_code") @db.VarChar(40)
+
+  buyProductId String? @map("buy_product_id")
+  buyQuantity  Int     @default(1) @map("buy_quantity")
+
+  rewardProductId String? @map("reward_product_id")
+  rewardQuantity  Int?    @map("reward_quantity")
+
+  discountPercent Decimal? @map("discount_percent") @db.Decimal(5, 2)
+
+  isActive Boolean @default(true) @map("is_active")
+
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  buyProduct    Product? @relation("PromotionBuyProduct", fields: [buyProductId], references: [id], onDelete: SetNull)
+  rewardProduct Product? @relation("PromotionRewardProduct", fields: [rewardProductId], references: [id], onDelete: SetNull)
+
+  eligibleProducts PromotionEligibleProduct[]
+
+  @@index([type])
+  @@index([isActive])
+  @@index([couponCode])
+  @@index([buyProductId])
+  @@index([rewardProductId])
+  @@map("promotions")
+}
+
+model PromotionEligibleProduct {
+  id String @id @default(uuid())
+
+  promotionId String @map("promotion_id")
+  productId   String @map("product_id")
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([promotionId, productId])
+  @@index([promotionId])
+  @@index([productId])
+  @@map("promotion_eligible_products")
+}
+
+// ─── Fidelidade v2 ────────────────────────────────────────────────────────────
+
+enum LoyaltyStampHistoryType {
+  ORDER_EARNED
+  ADMIN_ADD
+  ADMIN_REMOVE
+  REWARD_GRANTED
+  REWARD_REDEEMED
+}
+
+model LoyaltySettings {
+  id                String   @id @default(uuid())
+  isEnabled         Boolean  @default(true) @map("is_enabled")
+  title             String   @default("Cartão Fidelidade")
+  description       String?
+  cardImageUrl      String?  @map("card_image_url")
+  minOrderAmount    Decimal  @default(16.00) @map("min_order_amount") @db.Decimal(10, 2)
+  stampsRequired    Int      @default(10) @map("stamps_required")
+  rewardDescription String   @default("Ganhe 1 açaí grátis") @map("reward_description")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("loyalty_settings")
+}
+
+model CustomerLoyalty {
+  id                String   @id @default(uuid())
+  customerId        String   @unique @map("customer_id")
+  stamps            Int      @default(0)
+  availableRewards  Int      @default(0) @map("available_rewards")
+  totalEarnedStamps Int      @default(0) @map("total_earned_stamps")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  customer Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  history  LoyaltyStampHistory[]
+
+  @@map("customer_loyalties")
+}
+
+model LoyaltyStampHistory {
+  id                String                  @id @default(uuid())
+  customerLoyaltyId String                  @map("customer_loyalty_id")
+  orderId           String?                 @map("order_id")
+  type              LoyaltyStampHistoryType
+  quantity          Int
+  reason            String?
+  createdAt         DateTime                @default(now()) @map("created_at")
+
+  customerLoyalty CustomerLoyalty @relation(fields: [customerLoyaltyId], references: [id], onDelete: Cascade)
+  order           Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([customerLoyaltyId])
+  @@index([orderId])
+  @@map("loyalty_stamp_histories")
 }

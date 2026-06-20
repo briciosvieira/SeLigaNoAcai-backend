@@ -56,3 +56,19 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
+
+# Certificates / secrets
+certs/
+src/certs/
+*.crt
+*.key
+*.pem
+*.pfx
+*.p12
+
+uploads/*
+!uploads/.gitkeep
+!uploads/products/
+!uploads/products/.gitkeep
+!uploads/store/
+!uploads/store/.gitkeep
