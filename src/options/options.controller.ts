@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { OptionsService } from './options.service';
 import { PaginationQueryDto } from 'src/commom/dto/pagination-query.dto';
@@ -18,6 +19,10 @@ import { OptionResponseDto } from './dto/option-response.dto';
 import { CreateOptionDto } from './dto/create-option.dto';
 import { UpdateOptionGroupDto } from './dto/update-option-group.dto';
 import { UpdateOptionDto } from './dto/update-option.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
 
 @Controller('options')
 export class OptionsController {
@@ -38,6 +43,8 @@ export class OptionsController {
     return { data: group };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Post('groups')
   async createGroup(
     @Body() dto: CreateOptionGroupDto,
@@ -46,6 +53,8 @@ export class OptionsController {
     return { data: group };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Patch('groups/:id')
   async updateGroup(
     @Param('id') id: string,
@@ -55,12 +64,16 @@ export class OptionsController {
     return { data: group };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Delete('groups/:id')
   @HttpCode(204)
   async removeGroup(@Param('id') id: string): Promise<void> {
     await this.service.removeGroup(id);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Post('groups/:groupId/options')
   async createOption(
     @Param('groupId') groupId: string,
@@ -70,6 +83,8 @@ export class OptionsController {
     return { data: option };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Patch(':id')
   async updateOption(
     @Param('id') id: string,
@@ -79,6 +94,8 @@ export class OptionsController {
     return { data: option };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Delete(':id')
   @HttpCode(204)
   async removeOption(@Param('id') id: string): Promise<void> {

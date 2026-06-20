@@ -31,6 +31,10 @@ export class CreateProductDto {
   @IsString()
   imageUrl?: string;
 
+  @IsOptional()
+  @IsString()
+  mobileImageUrl?: string;
+
   @Type(() => Number)
   @IsNumber()
   basePrice: number;

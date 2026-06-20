@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Google Login Test</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+
+  <body>
+    <h1>Google Login Test</h1>
+
+    <div
+      id="g_id_onload"
+      data-client_id="622425559311-pp1c1thjvi1teo3cj1bu7das91ncp3pf.apps.googleusercontent.com"
+      data-callback="handleCredentialResponse"
+    ></div>
+
+    <div class="g_id_signin" data-type="standard"></div>
+
+    <pre id="result"></pre>
+
+    <script>
+      async function handleCredentialResponse(response) {
+        const idToken = response.credential;
+
+        const apiResponse = await fetch('http://localhost:3000/auth/google', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            idToken,
+          }),
+        });
+
+        const data = await apiResponse.json();
+
+        document.getElementById('result').textContent = JSON.stringify(
+          data,
+          null,
+          2,
+        );
+      }
+    </script>
+  </body>
+</html>

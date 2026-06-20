@@ -20,10 +20,10 @@ export class CreateOrderDto {
   @IsNotEmpty({ message: 'Os dados do cliente são obrigatórios.' })
   customer: CreateOrderCustomerDto;
 
+  @IsOptional()
   @ValidateNested()
   @Type(() => CreateOrderAddressDto)
-  @IsNotEmpty({ message: 'O endereço de entrega é obrigatório.' })
-  address: CreateOrderAddressDto;
+  address?: CreateOrderAddressDto;
 
   @IsString()
   @IsNotEmpty({ message: 'A zona de entrega é obrigatória.' })

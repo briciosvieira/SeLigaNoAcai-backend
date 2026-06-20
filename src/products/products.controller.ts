@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { PaginationQueryDto } from 'src/commom/dto/pagination-query.dto';
@@ -21,6 +22,10 @@ import { CreateProductVariantDto } from './dto/create-product-variant.dto';
 import { ProductOptionGroupResponseDto } from './dto/product-option-group-response.dto';
 import { UpdateProductOptionGroupDto } from './dto/update-product-option-group.dto';
 import { CreateProductOptionGroupDto } from './dto/create-product-option-group.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { UserRole } from '@prisma/client';
 
 @Controller('products')
 export class ProductsController {
@@ -32,13 +37,13 @@ export class ProductsController {
   }
 
   @Get(':id')
-  async findOne(
-    @Param('id') id: string,
-  ): Promise<ApiResponse<ProductResponseDto>> {
+  async findOne(@Param('id') id: string): Promise<ApiResponse<any>> {
     const product = await this.service.findOne(id);
     return { data: product };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Post()
   async create(
     @Body() dto: CreateProductDto,
@@ -47,6 +52,8 @@ export class ProductsController {
     return { data: product };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -56,6 +63,8 @@ export class ProductsController {
     return { data: product };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id') id: string): Promise<void> {
@@ -72,6 +81,9 @@ export class ProductsController {
       data: variants,
     };
   }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Post(':productId/variants')
   async createVariant(
     @Param('productId') productId: string,
@@ -84,6 +96,8 @@ export class ProductsController {
     };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Patch(':productId/variants/:variantId')
   async updateVariant(
     @Param('productId') productId: string,
@@ -97,6 +111,8 @@ export class ProductsController {
     };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Delete(':productId/variants/:variantId')
   async removeVariant(
     @Param('productId') productId: string,
@@ -121,6 +137,8 @@ export class ProductsController {
     };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Post(':productId/option-groups')
   async createProductOptionGroup(
     @Param('productId') productId: string,
@@ -136,6 +154,8 @@ export class ProductsController {
     };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Patch(':productId/option-groups/:id')
   async updateProductOptionGroup(
     @Param('productId') productId: string,
@@ -153,6 +173,8 @@ export class ProductsController {
     };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Delete(':productId/option-groups/:id')
   async removeProductOptionGroup(
     @Param('productId') productId: string,

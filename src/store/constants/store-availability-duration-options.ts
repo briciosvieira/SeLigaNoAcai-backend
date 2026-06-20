@@ -1,0 +1,18 @@
+export const STORE_AVAILABILITY_DURATION_OPTIONS = [
+  { label: '5 minutos', minutes: 5 },
+  { label: '10 minutos', minutes: 10 },
+  { label: '30 minutos', minutes: 30 },
+  { label: '40 minutos', minutes: 40 },
+  { label: '1 hora', minutes: 60 },
+  { label: '1 hora e meia', minutes: 90 },
+  { label: '2 horas', minutes: 120 },
+  { label: '2 horas e meia', minutes: 150 },
+  { label: '3 horas', minutes: 180 },
+  { label: '5 horas', minutes: 300 },
+  { label: '10 horas', minutes: 600 },
+  { label: '24 horas', minutes: 1440 },
+  { label: '2 dias', minutes: 2880 },
+  { label: '3 dias', minutes: 4320 },
+  { label: '4 dias', minutes: 5760 },
+  { label: '1 semana', minutes: 10080 },
+] as const;

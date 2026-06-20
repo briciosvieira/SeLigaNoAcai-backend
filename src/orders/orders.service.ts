@@ -4,8 +4,9 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiResponse } from 'src/commom/interfaces/api-response.interface';
 import { paginate } from 'src/commom/utils/pagination.util';
@@ -15,10 +16,36 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrderDetailResponseDto } from './dto/order-detail-response.dto';
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
+import { CurrentUserPayload } from 'src/auth/decorators/current-user.decorator';
+import { OrderTrackingResponseDto } from './dto/order-tracking-response.dto';
+import { LoyaltyService } from 'src/loyalty/loyalty.service';
+import { InterPixService } from 'src/payments/providers/inter/inter-pix.service';
+import { PaymentResponseDto } from 'src/payments/dto/payment-response.dto';
+import {
+  PICKUP_DELIVERY_ZONE_ID,
+  PICKUP_DELIVERY_ZONE_NAME,
+} from 'src/commom/constants/pickup.constants';
+
+type OrderCustomer = {
+  id: string;
+  fullName: string | null;
+  phone: string | null;
+  email: string | null;
+  cpf: string | null;
+};
+
+export type CreateOrderResult = {
+  order: OrderResponseDto;
+  payment: PaymentResponseDto | null;
+};
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly loyaltyService: LoyaltyService,
+    private readonly interPixService: InterPixService,
+  ) {}
 
   async findMany(
     query: FilterOrdersDto,
@@ -102,9 +129,13 @@ export class OrdersService {
     }
   }
 
-  async create(dto: CreateOrderDto): Promise<OrderResponseDto> {
+  async create(
+    dto: CreateOrderDto,
+    user?: CurrentUserPayload | null,
+  ): Promise<CreateOrderResult> {
     try {
-      const order = await this.prisma.$transaction(async (tx) => {
+      const { createdOrder, paymentId, totalAmount, orderNumber } =
+        await this.prisma.$transaction(async (tx) => {
         const store = await tx.store.findFirst({
           where: {
             isActive: true,
@@ -115,6 +146,8 @@ export class OrdersService {
           throw new NotFoundException('Loja ativa não encontrada.');
         }
 
+        const isPickup = dto.deliveryZoneId === PICKUP_DELIVERY_ZONE_ID;
+
         const deliveryZone = await tx.deliveryZone.findFirst({
           where: {
             id: dto.deliveryZoneId,
@@ -124,7 +157,19 @@ export class OrdersService {
         });
 
         if (!deliveryZone) {
-          throw new NotFoundException('Bairro de entrega não encontrado.');
+          throw new NotFoundException(
+            isPickup
+              ? 'Opção de retirada na loja não disponível.'
+              : 'Bairro de entrega não encontrado.',
+          );
+        }
+
+        if (!isPickup) {
+          if (!dto.address?.street || !dto.address?.number) {
+            throw new BadRequestException(
+              'Rua e número são obrigatórios para pedidos com entrega.',
+            );
+          }
         }
 
         if (!dto.items || dto.items.length === 0) {
@@ -135,17 +180,34 @@ export class OrdersService {
 
         const orderNumber = await this.generateOrderNumber(tx);
 
-        const customer = await tx.customer.create({
-          data: {
-            fullName: dto.customer.fullName,
-            phone: dto.customer.phone,
-            email: dto.customer.email?.toLowerCase(),
-            cpf: dto.customer.cpf,
-            authProvider: 'GUEST',
-            isGuest: true,
-            isActive: true,
-          },
-        });
+        let customer: OrderCustomer;
+
+        if (user) {
+          const loggedCustomer = await tx.customer.findFirst({
+            where: {
+              id: user.id,
+              isActive: true,
+            },
+          });
+
+          if (!loggedCustomer) {
+            throw new UnauthorizedException('Cliente autenticado inválido.');
+          }
+
+          customer = loggedCustomer;
+        } else {
+          customer = await tx.customer.create({
+            data: {
+              fullName: dto.customer.fullName,
+              phone: dto.customer.phone,
+              email: dto.customer.email?.toLowerCase(),
+              cpf: dto.customer.cpf,
+              authProvider: 'GUEST',
+              isGuest: true,
+              isActive: true,
+            },
+          });
+        }
 
         const customerAddress = await tx.customerAddress.create({
           data: {
@@ -159,11 +221,11 @@ export class OrdersService {
                 id: deliveryZone.id,
               },
             },
-            street: dto.address.street,
-            number: dto.address.number,
-            complement: dto.address.complement,
-            referencePoint: dto.address.referencePoint,
-            neighborhood: deliveryZone.neighborhood,
+            street: isPickup ? null : (dto.address?.street ?? null),
+            number: isPickup ? null : (dto.address?.number ?? null),
+            complement: isPickup ? null : (dto.address?.complement ?? null),
+            referencePoint: isPickup ? null : (dto.address?.referencePoint ?? null),
+            neighborhood: isPickup ? PICKUP_DELIVERY_ZONE_NAME : deliveryZone.neighborhood,
             city: deliveryZone.city,
             state: deliveryZone.state,
             isDefault: true,
@@ -283,19 +345,17 @@ export class OrdersService {
           });
         }
 
-        if (subtotalAmount.lessThan(store.minimumOrderAmount)) {
-          throw new BadRequestException(
-            `Pedido mínimo de R$ ${store.minimumOrderAmount.toString()} não atingido.`,
-          );
-        }
-
-        const deliveryFee = deliveryZone.deliveryFee;
+        const deliveryFee = isPickup
+          ? new Prisma.Decimal(0)
+          : deliveryZone.deliveryFee;
         const discountAmount = new Prisma.Decimal(0);
         const totalAmount = subtotalAmount
           .plus(deliveryFee)
           .minus(discountAmount);
 
-        const deliveryAddressText = this.buildDeliveryAddressText(dto);
+        const deliveryAddressText = isPickup
+          ? PICKUP_DELIVERY_ZONE_NAME
+          : this.buildDeliveryAddressText(dto);
 
         const whatsappMessage = this.buildWhatsappMessage({
           storeName: store.name,
@@ -342,7 +402,9 @@ export class OrdersService {
             customerPhone: dto.customer.phone,
             customerEmail: dto.customer.email?.toLowerCase(),
 
-            deliveryNeighborhood: deliveryZone.neighborhood,
+            deliveryNeighborhood: isPickup
+              ? PICKUP_DELIVERY_ZONE_NAME
+              : deliveryZone.neighborhood,
             deliveryAddressText,
 
             subtotalAmount,
@@ -423,7 +485,7 @@ export class OrdersService {
           }
         }
 
-        await tx.payment.create({
+        const stubPayment = await tx.payment.create({
           data: {
             order: {
               connect: {
@@ -450,10 +512,100 @@ export class OrdersService {
           },
         });
 
-        return createdOrder;
+        return {
+          createdOrder,
+          paymentId: stubPayment.id,
+          totalAmount,
+          orderNumber,
+        };
       });
 
-      return new OrderResponseDto(order);
+      if (dto.paymentMethod === PaymentMethod.PIX) {
+        const expirationSeconds = Number(
+          process.env.INTER_PIX_EXPIRATION_SECONDS ?? 900,
+        );
+        const pixKey = process.env.INTER_PIX_KEY;
+
+        if (!pixKey) {
+          throw new InternalServerErrorException(
+            'Chave PIX não configurada no servidor.',
+          );
+        }
+
+        const payerName = dto.customer.fullName || 'Cliente';
+        const txid = this.buildPixTxid(orderNumber);
+
+        console.log('[PIX] ▶ Iniciando geração', {
+          orderNumber,
+          txid,
+          amount: Number(totalAmount).toFixed(2),
+          payerName,
+          pixKey: pixKey.slice(0, 6) + '***',
+          expirationSeconds,
+        });
+
+        const interCharge = await this.interPixService.createCharge({
+          txid,
+          amount: Number(totalAmount).toFixed(2),
+          pixKey,
+          expirationSeconds,
+          payerName,
+          description: `Pedido ${orderNumber} - Se Liga no Açaí`,
+        });
+
+        console.log('[PIX] ✔ Resposta do Inter', {
+          txid: interCharge.txid,
+          status: interCharge.status,
+          pixCopyPaste: interCharge.pixCopyPaste ?? 'AUSENTE',
+          pixQrCodeBase64: interCharge.pixQrCodeBase64
+            ? `[OK - ${interCharge.pixQrCodeBase64.length} chars]`
+            : 'AUSENTE',
+          pixExpiresAt: interCharge.pixExpiresAt,
+        });
+
+        if (!interCharge.pixCopyPaste) {
+          throw new InternalServerErrorException(
+            'Não foi possível gerar o código PIX.',
+          );
+        }
+
+        const updatedPayment = await this.prisma.payment.update({
+          where: { id: paymentId },
+          data: {
+            provider: 'INTER',
+            providerPaymentId: interCharge.txid,
+            pixCopyPaste: interCharge.pixCopyPaste,
+            pixQrCode: interCharge.pixQrCodeBase64,
+            pixExpiresAt: interCharge.pixExpiresAt,
+            status: 'PENDING',
+          },
+        });
+
+        const paymentDto = new PaymentResponseDto(updatedPayment);
+
+        console.log('[PIX] ✔ Resposta enviada ao frontend', {
+          paymentId: paymentDto.id,
+          pixCopyPaste: paymentDto.pixCopyPaste ?? 'AUSENTE',
+          pixQrCodeBase64: paymentDto.pixQrCodeBase64
+            ? `[OK - ${paymentDto.pixQrCodeBase64.length} chars]`
+            : 'AUSENTE',
+          expiresAt: paymentDto.expiresAt,
+        });
+
+        return {
+          order: new OrderResponseDto(createdOrder),
+          payment: paymentDto,
+        };
+      }
+
+      const payment = await this.prisma.payment.findUnique({
+        where: { id: paymentId },
+      });
+
+      return {
+        order: new OrderResponseDto(createdOrder),
+        payment: payment ? new PaymentResponseDto(payment) : null,
+      };
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -506,6 +658,8 @@ export class OrdersService {
           },
         });
 
+        await this.loyaltyService.tryAddStampForOrder(tx, id);
+
         return updatedOrder;
       });
 
@@ -519,6 +673,13 @@ export class OrdersService {
         'Não foi possível atualizar o status do pedido.',
       );
     }
+  }
+
+  private buildPixTxid(orderNumber: string): string {
+    const random = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const base = `SLACAI${orderNumber}${Date.now()}${random}`;
+
+    return base.replace(/[^A-Za-z0-9]/g, '').slice(0, 35);
   }
 
   private async generateOrderNumber(
@@ -536,13 +697,14 @@ export class OrdersService {
   private buildDeliveryAddressText(dto: CreateOrderDto): string {
     const address = dto.address;
 
-    const complement = address.complement ? ` - ${address.complement}` : '';
-
-    const reference = address.referencePoint
+    const street = address?.street ?? '';
+    const number = address?.number ?? '';
+    const complement = address?.complement ? ` - ${address.complement}` : '';
+    const reference = address?.referencePoint
       ? ` | Referência: ${address.referencePoint}`
       : '';
 
-    return `${address.street}, ${address.number}${complement}${reference}`;
+    return `${street}, ${number}${complement}${reference}`;
   }
 
   private buildWhatsappMessage(params: {
@@ -662,6 +824,8 @@ export class OrdersService {
           },
         });
 
+        await this.loyaltyService.tryAddStampForOrder(tx, id);
+
         return updatedOrder;
       });
 
@@ -675,5 +839,126 @@ export class OrdersService {
         'Não foi possível atualizar o status do pagamento.',
       );
     }
+  }
+
+  async findMyOrders(
+    customerId: string,
+    query: FilterOrdersDto,
+  ): Promise<ApiResponse<OrderResponseDto[]>> {
+    try {
+      const { skip, take, meta } = paginate(query.page, query.limit);
+
+      const where: Prisma.OrderWhereInput = {
+        customerId,
+        ...(query.orderStatus && {
+          orderStatus: query.orderStatus as OrderStatus,
+        }),
+        ...(query.paymentStatus && {
+          paymentStatus: query.paymentStatus as PaymentStatus,
+        }),
+      };
+
+      const [orders, total] = await this.prisma.$transaction([
+        this.prisma.order.findMany({
+          where,
+          skip,
+          take,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+        this.prisma.order.count({
+          where,
+        }),
+      ]);
+
+      return {
+        data: orders.map((order) => new OrderResponseDto(order)),
+        meta: meta(total),
+      };
+    } catch (error) {
+      throw new InternalServerErrorException('Erro ao buscar seus pedidos.');
+    }
+  }
+
+  async findMyOrder(
+    customerId: string,
+    id: string,
+  ): Promise<OrderDetailResponseDto> {
+    try {
+      const order = await this.prisma.order.findFirst({
+        where: {
+          id,
+          customerId,
+        },
+        include: {
+          customerAddress: true,
+          deliveryZone: true,
+          items: {
+            include: {
+              options: true,
+            },
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+          payments: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+          statusHistory: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('Pedido não encontrado.');
+      }
+
+      return new OrderDetailResponseDto(order);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException('Erro ao buscar o pedido.');
+    }
+  }
+
+  async trackOrder(
+    orderNumber: string,
+    phone: string,
+  ): Promise<OrderTrackingResponseDto> {
+    try {
+      const normalizedOrderNumber = orderNumber.trim().toUpperCase();
+      const normalizedPhone = this.normalizePhone(phone);
+
+      const order = await this.prisma.order.findFirst({
+        where: {
+          orderNumber: normalizedOrderNumber,
+          customerPhone: normalizedPhone,
+        },
+      });
+
+      if (!order) {
+        throw new NotFoundException('Pedido não encontrado.');
+      }
+
+      return new OrderTrackingResponseDto(order);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException('Erro ao consultar pedido.');
+    }
+  }
+
+  private normalizePhone(phone: string): string {
+    return phone.replace(/\D/g, '');
   }
 }

@@ -2,6 +2,10 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
+// Must match src/commom/constants/pickup.constants.ts
+const PICKUP_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
+const PICKUP_DELIVERY_ZONE_NAME = 'Retirada na loja';
+
 const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) {
@@ -71,6 +75,27 @@ async function main() {
     ['Tokaia', '4.00'],
     ['Vila Militar', '5.00'],
   ];
+
+  // Zona fixa de retirada na loja — ID imutável usado pelo backend
+  await prisma.deliveryZone.upsert({
+    where: { id: PICKUP_DELIVERY_ZONE_ID },
+    update: {
+      neighborhood: PICKUP_DELIVERY_ZONE_NAME,
+      city: 'Salvador',
+      state: 'BA',
+      deliveryFee: 0,
+      isAvailable: true,
+    },
+    create: {
+      id: PICKUP_DELIVERY_ZONE_ID,
+      storeId: store.id,
+      neighborhood: PICKUP_DELIVERY_ZONE_NAME,
+      city: 'Salvador',
+      state: 'BA',
+      deliveryFee: 0,
+      isAvailable: true,
+    },
+  });
 
   for (const [index, [neighborhood, deliveryFee]] of bairros.entries()) {
     await prisma.deliveryZone.upsert({
@@ -626,6 +651,7 @@ async function main() {
       data: {
         purchasesRequired: 10,
         minimumOrderAmount: '16.00',
+        validityMonths: 10,
         rewardDescription:
           'Complete 10 compras a partir de R$ 16,00 e ganhe um presente dourado.',
         isActive: true,
@@ -638,12 +664,27 @@ async function main() {
         name: 'Cartão Fidelidade',
         purchasesRequired: 10,
         minimumOrderAmount: '16.00',
+        validityMonths: 10,
         rewardDescription:
           'Complete 10 compras a partir de R$ 16,00 e ganhe um presente dourado.',
         isActive: true,
       },
     });
   }
+
+  await prisma.loyaltySettings.upsert({
+    where: { id: '11111111-2222-4333-8444-555555555555' },
+    update: {},
+    create: {
+      id: '11111111-2222-4333-8444-555555555555',
+      isEnabled: true,
+      title: 'Cartão Fidelidade',
+      description: 'Complete 10 compras acima de R$ 16,00 e ganhe 1 brinde.',
+      minOrderAmount: 16,
+      stampsRequired: 10,
+      rewardDescription: 'Ganhe 1 açaí grátis',
+    },
+  });
 
   console.log('Seed finalizado com sucesso.');
 }

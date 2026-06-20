@@ -54,17 +54,68 @@ export class ProductsService {
     }
   }
 
-  async findOne(id: string): Promise<ProductResponseDto> {
+  async findOne(id: string): Promise<any> {
     try {
-      const product = await this.prisma.product.findUnique({
-        where: { id },
+      const productWithDetails = await this.prisma.product.findUnique({
+        where: { id, isActive: true },
+        include: {
+          variants: {
+            where: { isActive: true },
+            orderBy: { displayOrder: 'asc' },
+          },
+          productOptionGroups: {
+            where: {
+              optionGroup: { isActive: true },
+            },
+            include: {
+              optionGroup: {
+                include: {
+                  options: {
+                    where: { isActive: true },
+                    orderBy: { displayOrder: 'asc' },
+                  },
+                },
+              },
+            },
+            orderBy: { displayOrder: 'asc' },
+          },
+        },
       });
 
-      if (!product) {
+      if (!productWithDetails) {
         throw new NotFoundException('Produto não encontrado.');
       }
 
-      return new ProductResponseDto(product);
+      const { productOptionGroups, variants, ...productData } =
+        productWithDetails;
+
+      const mappedOptionGroups = productOptionGroups.map((pog) => {
+        const { optionGroup } = pog;
+        const options = optionGroup.options.map((opt) => ({
+          id: opt.id,
+          name: opt.name,
+          description: opt.description,
+          additionalPrice: opt.additionalPrice ?? 0,
+          isActive: opt.isActive,
+        }));
+
+        return {
+          id: optionGroup.id,
+          name: optionGroup.name,
+          minSelected: pog.minSelected ?? 0,
+          maxSelected: pog.maxSelected ?? options.length,
+          isActive: optionGroup.isActive,
+          options,
+        };
+      });
+
+      return {
+        ...new ProductResponseDto(productData),
+        variants: variants.map(
+          (variant) => new ProductVariantResponseDto(variant),
+        ),
+        optionGroups: mappedOptionGroups,
+      };
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -120,6 +171,7 @@ export class ProductsService {
           description: dto.description,
           emoji: dto.emoji,
           imageUrl: dto.imageUrl,
+          mobileImageUrl: dto.mobileImageUrl,
           basePrice: dto.basePrice,
           oldPrice: dto.oldPrice,
           badge: dto.badge,

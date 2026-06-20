@@ -8,6 +8,7 @@ import {
   Delete,
   HttpCode,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { DeliveryZonesService } from './delivery-zones.service';
 import { ApiResponse } from 'src/commom/interfaces/api-response.interface';
@@ -15,6 +16,10 @@ import { DeliveryZonesResponseDto } from './dto/delivery-zones-response';
 import { CreateDeliveryZoneDto } from './dto/create-delivery-zone.dto';
 import { UpdateDeliveryZoneDto } from './dto/update-delivery-zone.dto';
 import { PaginationQueryDto } from 'src/commom/dto/pagination-query.dto';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { UserRole } from '@prisma/client';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('delivery-zones')
 export class DeliveryZonesController {
@@ -35,6 +40,8 @@ export class DeliveryZonesController {
     return { data: zone };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Post()
   async create(
     @Body() createDeliveryZoneDto: CreateDeliveryZoneDto,
@@ -43,6 +50,8 @@ export class DeliveryZonesController {
     return { data: zone };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -52,6 +61,8 @@ export class DeliveryZonesController {
     return { data: zone };
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id') id: string): Promise<void> {
