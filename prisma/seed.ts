@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as bcrypt from 'bcrypt';
 
 // Must match src/commom/constants/pickup.constants.ts
 const PICKUP_DELIVERY_ZONE_ID = '11111111-1111-4111-8111-111111111111';
@@ -685,6 +686,37 @@ async function main() {
       rewardDescription: 'Ganhe 1 açaí grátis',
     },
   });
+
+  // Admins — upsert por e-mail, nunca sobrescreve senha existente
+  const adminUsers = [
+    { email: 'teste@teste.com', fullName: 'Admin Teste' },
+    { email: 'fabricio@email.com', fullName: 'Fabricio Vieira' },
+  ];
+
+  const passwordHash = await bcrypt.hash('123456', 10);
+
+  for (const admin of adminUsers) {
+    const existing = await prisma.customer.findUnique({
+      where: { email: admin.email },
+    });
+
+    if (!existing) {
+      await prisma.customer.create({
+        data: {
+          email: admin.email,
+          fullName: admin.fullName,
+          authProvider: 'MANUAL',
+          role: 'ADMIN',
+          isGuest: false,
+          isActive: true,
+          passwordHash,
+        },
+      });
+      console.log(`Admin criado: ${admin.email}`);
+    } else {
+      console.log(`Admin já existe (ignorado): ${admin.email}`);
+    }
+  }
 
   console.log('Seed finalizado com sucesso.');
 }
