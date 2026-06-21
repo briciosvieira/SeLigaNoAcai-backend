@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -25,4 +26,20 @@ export class RegisterDto {
   @IsString()
   @MinLength(6, { message: 'A senha deve ter no mínimo 6 caracteres.' })
   password: string;
+
+  @IsOptional()
+  @IsBoolean()
+  termsAccepted?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  privacyAccepted?: boolean;
+
+  @IsOptional()
+  @IsString()
+  termsVersion?: string;
+
+  @IsOptional()
+  @IsString()
+  privacyVersion?: string;
 }

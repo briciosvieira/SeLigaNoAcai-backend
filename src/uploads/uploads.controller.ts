@@ -22,7 +22,7 @@ import { UploadsService } from './uploads.service';
 
 const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
 
-type UploadFolder = 'products' | 'store' | 'banners' | 'loyalty';
+type UploadFolder = 'products' | 'store' | 'banners' | 'loyalty' | 'announcements' | 'customers';
 
 function imageFileFilter(
   req: Express.Request,
@@ -180,6 +180,63 @@ export class UploadsController {
         mimetype: file.mimetype,
         size: file.size,
         url: `/uploads/loyalty/${file.filename}`,
+      }),
+    };
+  }
+
+  @Post('avatar')
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN, UserRole.STAFF)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: buildStorage('customers'),
+      fileFilter: imageFileFilter,
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadCustomerAvatar(
+    @UploadedFile() file: Express.Multer.File,
+  ): ApiResponse<UploadResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Arquivo não enviado.');
+    }
+
+    return {
+      data: new UploadResponseDto({
+        filename: file.filename,
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        url: `/uploads/customers/${file.filename}`,
+      }),
+    };
+  }
+
+  @Post('announcement')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: buildStorage('announcements'),
+      fileFilter: imageFileFilter,
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadAnnouncementImage(
+    @UploadedFile() file: Express.Multer.File,
+  ): ApiResponse<UploadResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Arquivo não enviado.');
+    }
+
+    return {
+      data: new UploadResponseDto({
+        filename: file.filename,
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        url: `/uploads/announcements/${file.filename}`,
       }),
     };
   }

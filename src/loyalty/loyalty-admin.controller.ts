@@ -42,7 +42,18 @@ export class LoyaltyAdminController {
   @Get('customers')
   async getCustomers(
     @Query('search') search?: string,
-  ): Promise<ApiResponse<{ customerId: string; customerName: string | null; stamps: number; availableRewards: number; totalEarnedStamps: number }[]>> {
+  ): Promise<ApiResponse<{
+    customerId: string;
+    customerName: string | null;
+    email: string | null;
+    phone: string | null;
+    avatarUrl: string | null;
+    googleAvatarUrl: string | null;
+    customerCode: string | null;
+    stamps: number;
+    availableRewards: number;
+    totalEarnedStamps: number;
+  }[]>> {
     return this.service.adminGetCustomers(search);
   }
 
@@ -72,7 +83,7 @@ export class LoyaltyAdminController {
   @Post('customers/:customerId/rewards/redeem')
   async redeemReward(
     @Param('customerId') customerId: string,
-  ): Promise<ApiResponse<CustomerLoyaltyResponseDto>> {
+  ): Promise<ApiResponse<{ redeemedCardId: string; message: string }>> {
     return this.service.adminRedeemReward(customerId);
   }
 }

@@ -7,6 +7,8 @@ export class CustomerResponseDto {
   email: string | null;
   phone: string | null;
   cpf: string | null;
+  avatarUrl: string | null;
+  googleAvatarUrl: string | null;
   authProvider: string;
   role: string;
   isGuest: boolean;
@@ -21,6 +23,8 @@ export class CustomerResponseDto {
     this.email = customer.email;
     this.phone = customer.phone;
     this.cpf = customer.cpf;
+    this.avatarUrl = customer.avatarUrl;
+    this.googleAvatarUrl = customer.googleAvatarUrl;
     this.authProvider = customer.authProvider;
     this.role = customer.role;
     this.isGuest = customer.isGuest;
