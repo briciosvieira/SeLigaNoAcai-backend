@@ -7,10 +7,16 @@ export class AuthUserResponseDto {
   email: string | null;
   phone: string | null;
   cpf: string | null;
+  avatarUrl: string | null;
+  googleAvatarUrl: string | null;
   role: string;
   authProvider: string;
   isGuest: boolean;
   isActive: boolean;
+  termsAcceptedAt: Date | null;
+  privacyAcceptedAt: Date | null;
+  termsVersion: string | null;
+  privacyVersion: string | null;
   createdAt: Date;
   updatedAt: Date;
 
@@ -21,10 +27,16 @@ export class AuthUserResponseDto {
     this.email = customer.email;
     this.phone = customer.phone;
     this.cpf = customer.cpf;
+    this.avatarUrl = customer.avatarUrl;
+    this.googleAvatarUrl = customer.googleAvatarUrl;
     this.role = customer.role;
     this.authProvider = customer.authProvider;
     this.isGuest = customer.isGuest;
     this.isActive = customer.isActive;
+    this.termsAcceptedAt = customer.termsAcceptedAt;
+    this.privacyAcceptedAt = customer.privacyAcceptedAt;
+    this.termsVersion = customer.termsVersion;
+    this.privacyVersion = customer.privacyVersion;
     this.createdAt = customer.createdAt;
     this.updatedAt = customer.updatedAt;
   }

@@ -8,6 +8,7 @@ export class LoyaltySettingsResponseDto {
   cardImageUrl: string | null;
   minOrderAmount: string;
   stampsRequired: number;
+  validityMonths: number;
   rewardDescription: string;
   createdAt: Date;
   updatedAt: Date;
@@ -20,6 +21,7 @@ export class LoyaltySettingsResponseDto {
     this.cardImageUrl = s.cardImageUrl;
     this.minOrderAmount = s.minOrderAmount.toString();
     this.stampsRequired = s.stampsRequired;
+    this.validityMonths = s.validityMonths;
     this.rewardDescription = s.rewardDescription;
     this.createdAt = s.createdAt;
     this.updatedAt = s.updatedAt;

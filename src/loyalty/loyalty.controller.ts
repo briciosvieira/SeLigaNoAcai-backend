@@ -17,8 +17,8 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { AdjustLoyaltyCardDto } from './dto/adjust-loyalty-card.dto';
 import { CreateLoyaltyProgramDto } from './dto/create-loyalty-program.dto';
-import { CustomerLoyaltyResponseDto } from './dto/customer-loyalty-response.dto';
 import { LoyaltyCardResponseDto } from './dto/loyalty-card-response.dto';
+import { LoyaltyCycleCardResponseDto } from './dto/loyalty-cycle-card-response.dto';
 import { LoyaltyProgramResponseDto } from './dto/loyalty-program-response.dto';
 import { LoyaltySettingsResponseDto } from './dto/loyalty-settings-response.dto';
 import { UpdateLoyaltyProgramDto } from './dto/update-loyalty-program.dto';
@@ -35,8 +35,10 @@ export class LoyaltyController {
   async getMyLoyalty(@CurrentUser() user: CurrentUserPayload): Promise<
     ApiResponse<{
       settings: LoyaltySettingsResponseDto;
-      card: CustomerLoyaltyResponseDto;
-      history: CustomerLoyaltyResponseDto['history'];
+      currentCard: LoyaltyCycleCardResponseDto | null;
+      previousCards: LoyaltyCycleCardResponseDto[];
+      availableRewards: number;
+      customerName: string | null;
     }>
   > {
     return this.service.getMyLoyalty(user.id);

@@ -37,6 +37,12 @@ export class UpdateLoyaltySettingsDto {
   stampsRequired?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  validityMonths?: number;
+
+  @IsOptional()
   @IsString()
   rewardDescription?: string;
 }

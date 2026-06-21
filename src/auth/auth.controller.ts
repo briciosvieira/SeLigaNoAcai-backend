@@ -10,6 +10,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { ChangeMyPasswordDto } from './dto/change-my-password.dto';
+import { LegalAcceptanceDto } from './dto/legal-acceptance.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 
 @Controller('auth')
@@ -89,6 +90,19 @@ export class AuthController {
     @Body() dto: UpdateMeDto,
   ): Promise<ApiResponse<AuthUserResponseDto>> {
     const customer = await this.service.updateMe(user.id, dto);
+
+    return {
+      data: customer,
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/legal-acceptance')
+  async acceptLegal(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: LegalAcceptanceDto,
+  ): Promise<ApiResponse<AuthUserResponseDto>> {
+    const customer = await this.service.acceptLegal(user.id, dto);
 
     return {
       data: customer,

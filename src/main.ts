@@ -10,11 +10,18 @@ async function bootstrap() {
   // Libera acesso do frontend à API
   app.enableCors({
     origin: [
-      process.env.FRONTEND_URL || 'http://localhost:5173',
+      'https://acai.briciosvieira.cloud',
+      'https://seliganoacai.com',
+      'https://www.seliganoacai.com',
+      'https://api.seliganoacai.com',
+      'https://seliganoacai.com.br',
+      'http://localhost:5173',
       'http://localhost:5500',
       'http://127.0.0.1:5500',
     ],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Validação automática dos DTOs
@@ -32,7 +39,7 @@ async function bootstrap() {
   });
 
   // Porta da aplicação
-  const port = Number(process.env.PORT) || 3000;
+  const port = Number(process.env.PORT) || 3131;
 
   await app.listen(port);
 

@@ -18,6 +18,7 @@ import { UploadsModule } from 'src/uploads/uploads.module';
 import { AdminModule } from 'src/admin/admin.module';
 import { BannersModule } from 'src/banners/banners.module';
 import { PromotionsModule } from 'src/promotions/promotions.module';
+import { AnnouncementsModule } from 'src/announcements/announcements.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { PromotionsModule } from 'src/promotions/promotions.module';
     AdminModule,
     BannersModule,
     PromotionsModule,
+    AnnouncementsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

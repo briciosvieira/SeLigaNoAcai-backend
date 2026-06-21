@@ -19,6 +19,7 @@ import { RegisterDto } from './dto/register.dto';
 import { OAuth2Client } from 'google-auth-library';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { ChangeMyPasswordDto } from './dto/change-my-password.dto';
+import { LegalAcceptanceDto } from './dto/legal-acceptance.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 
 type TokenPayload = {
@@ -65,50 +66,59 @@ export class AuthService {
         throw new UnauthorizedException('E-mail do Google não verificado.');
       }
 
-      let customer = await this.prisma.customer.findFirst({
+      const googleAvatar = googlePayload.picture ?? null;
+
+      let existing = await this.prisma.customer.findFirst({
         where: {
           authProvider: AuthProvider.GOOGLE,
           authProviderId: googleId,
         },
       });
 
-      if (!customer) {
-        customer = await this.prisma.customer.findUnique({
-          where: {
-            email,
-          },
-        });
+      if (!existing) {
+        existing = await this.prisma.customer.findUnique({ where: { email } });
       }
 
-      if (customer) {
-        customer = await this.prisma.customer.update({
-          where: {
-            id: customer.id,
-          },
-          data: {
-            fullName: customer.fullName ?? fullName,
-            email,
-            authProvider: AuthProvider.GOOGLE,
-            authProviderId: googleId,
-            isGuest: false,
-            isActive: true,
-            lastLoginAt: new Date(),
-          },
-        });
-      } else {
-        customer = await this.prisma.customer.create({
+      let customer = await this.prisma.$transaction(async (tx) => {
+        if (existing) {
+          const customerCode =
+            existing.customerCode ?? (await this.generateCustomerCode(tx));
+
+          return tx.customer.update({
+            where: { id: existing.id },
+            data: {
+              fullName: existing.fullName ?? fullName,
+              email,
+              authProvider: AuthProvider.GOOGLE,
+              authProviderId: googleId,
+              googleAvatarUrl: googleAvatar,
+              avatarUrl: existing.avatarUrl ?? googleAvatar,
+              customerCode,
+              isGuest: false,
+              isActive: true,
+              lastLoginAt: new Date(),
+            },
+          });
+        }
+
+        const customerCode = await this.generateCustomerCode(tx);
+
+        return tx.customer.create({
           data: {
             fullName,
             email,
             authProvider: AuthProvider.GOOGLE,
             authProviderId: googleId,
+            googleAvatarUrl: googleAvatar,
+            avatarUrl: googleAvatar,
+            customerCode,
             role: UserRole.CUSTOMER,
             isGuest: false,
             isActive: true,
             lastLoginAt: new Date(),
           },
         });
-      }
+      });
 
       const tokens = await this.generateTokens(customer);
 
@@ -180,7 +190,13 @@ export class AuthService {
           (await this.generateCustomerCode(tx));
 
         if (existingCustomer && existingCustomer.isGuest) {
-          return tx.customer.update({
+          const now = new Date();
+        const legalData = {
+          ...(dto.termsAccepted && { termsAcceptedAt: now, termsVersion: dto.termsVersion ?? null }),
+          ...(dto.privacyAccepted && { privacyAcceptedAt: now, privacyVersion: dto.privacyVersion ?? null }),
+        };
+
+        return tx.customer.update({
             where: {
               id: existingCustomer.id,
             },
@@ -197,9 +213,16 @@ export class AuthService {
               isGuest: false,
               isActive: true,
               lastLoginAt: new Date(),
+              ...legalData,
             },
           });
         }
+
+        const now = new Date();
+        const legalData = {
+          ...(dto.termsAccepted && { termsAcceptedAt: now, termsVersion: dto.termsVersion ?? null }),
+          ...(dto.privacyAccepted && { privacyAcceptedAt: now, privacyVersion: dto.privacyVersion ?? null }),
+        };
 
         return tx.customer.create({
           data: {
@@ -215,6 +238,7 @@ export class AuthService {
             isGuest: false,
             isActive: true,
             lastLoginAt: new Date(),
+            ...legalData,
           },
         });
       });
@@ -514,6 +538,32 @@ export class AuthService {
       data: {
         ...(dto.fullName !== undefined && { fullName: dto.fullName }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+      },
+    });
+
+    return new AuthUserResponseDto(updated);
+  }
+
+  async acceptLegal(
+    customerId: string,
+    dto: LegalAcceptanceDto,
+  ): Promise<AuthUserResponseDto> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+
+    if (!customer || !customer.isActive) {
+      throw new UnauthorizedException('Usuário inválido ou inativo.');
+    }
+
+    const now = new Date();
+
+    const updated = await this.prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        ...(dto.termsAccepted && { termsAcceptedAt: now, termsVersion: dto.termsVersion ?? null }),
+        ...(dto.privacyAccepted && { privacyAcceptedAt: now, privacyVersion: dto.privacyVersion ?? null }),
       },
     });
 

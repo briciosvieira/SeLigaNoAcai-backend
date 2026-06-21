@@ -21,6 +21,7 @@ import { AdjustLoyaltyCardDto } from './dto/adjust-loyalty-card.dto';
 import { CreateLoyaltyProgramDto } from './dto/create-loyalty-program.dto';
 import { CustomerLoyaltyResponseDto } from './dto/customer-loyalty-response.dto';
 import { LoyaltyCardResponseDto } from './dto/loyalty-card-response.dto';
+import { LoyaltyCycleCardResponseDto } from './dto/loyalty-cycle-card-response.dto';
 import { LoyaltyProgramResponseDto } from './dto/loyalty-program-response.dto';
 import { LoyaltySettingsResponseDto } from './dto/loyalty-settings-response.dto';
 import { StampActionDto } from './dto/stamp-action.dto';
@@ -55,6 +56,7 @@ export class LoyaltyService {
           ...(dto.cardImageUrl !== undefined && { cardImageUrl: dto.cardImageUrl }),
           ...(dto.minOrderAmount !== undefined && { minOrderAmount: dto.minOrderAmount }),
           ...(dto.stampsRequired !== undefined && { stampsRequired: dto.stampsRequired }),
+          ...(dto.validityMonths !== undefined && { validityMonths: dto.validityMonths }),
           ...(dto.rewardDescription !== undefined && { rewardDescription: dto.rewardDescription }),
         },
       });
@@ -66,15 +68,15 @@ export class LoyaltyService {
     }
   }
 
-  // ─── Cliente: cartão próprio ────────────────────────────────────────────────
+  // ─── Cliente: cartão fidelidade por ciclo ──────────────────────────────────
 
-  async getMyLoyalty(
-    customerId: string,
-  ): Promise<
+  async getMyLoyalty(customerId: string): Promise<
     ApiResponse<{
       settings: LoyaltySettingsResponseDto;
-      card: CustomerLoyaltyResponseDto;
-      history: CustomerLoyaltyResponseDto['history'];
+      currentCard: LoyaltyCycleCardResponseDto | null;
+      previousCards: LoyaltyCycleCardResponseDto[];
+      availableRewards: number;
+      customerName: string | null;
     }>
   > {
     const settings = await this.prisma.loyaltySettings.findFirst();
@@ -89,15 +91,29 @@ export class LoyaltyService {
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado.');
 
-    const { loyalty, history } = await this.getOrCreateLoyalty(customerId);
+    const allCards = await this.prisma.loyaltyCard.findMany({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+    });
 
-    const card = new CustomerLoyaltyResponseDto(loyalty, customer, history);
+    const currentCard =
+      allCards.find(
+        (c) => c.status === LoyaltyCardStatus.ACTIVE || c.status === LoyaltyCardStatus.COMPLETED,
+      ) ?? null;
+
+    const previousCards = allCards.filter(
+      (c) => c.status === LoyaltyCardStatus.REDEEMED || c.status === LoyaltyCardStatus.EXPIRED,
+    );
+
+    const availableRewards = allCards.filter((c) => c.status === LoyaltyCardStatus.COMPLETED).length;
 
     return {
       data: {
         settings: new LoyaltySettingsResponseDto(settings),
-        card,
-        history: card.history,
+        currentCard: currentCard ? new LoyaltyCycleCardResponseDto(currentCard) : null,
+        previousCards: previousCards.map((c) => new LoyaltyCycleCardResponseDto(c)),
+        availableRewards,
+        customerName: customer.fullName,
       },
     };
   }
@@ -105,16 +121,41 @@ export class LoyaltyService {
   // ─── Admin: customers ───────────────────────────────────────────────────────
 
   async adminGetCustomers(search?: string): Promise<
-    ApiResponse<{ customerId: string; customerName: string | null; stamps: number; availableRewards: number; totalEarnedStamps: number }[]>
+    ApiResponse<{
+      customerId: string;
+      customerName: string | null;
+      email: string | null;
+      phone: string | null;
+      avatarUrl: string | null;
+      googleAvatarUrl: string | null;
+      customerCode: string | null;
+      stamps: number;
+      availableRewards: number;
+      totalEarnedStamps: number;
+    }[]>
   > {
     const loyalties = await this.prisma.customerLoyalty.findMany({
-      include: { customer: { select: { id: true, fullName: true, email: true } } },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+            avatarUrl: true,
+            googleAvatarUrl: true,
+            customerCode: true,
+          },
+        },
+      },
       where: search
         ? {
             customer: {
               OR: [
                 { fullName: { contains: search, mode: 'insensitive' } },
                 { email: { contains: search, mode: 'insensitive' } },
+                { phone: { contains: search } },
+                { customerCode: { contains: search } },
               ],
             },
           }
@@ -126,6 +167,11 @@ export class LoyaltyService {
       data: loyalties.map((l) => ({
         customerId: l.customerId,
         customerName: l.customer.fullName,
+        email: l.customer.email,
+        phone: l.customer.phone,
+        avatarUrl: l.customer.avatarUrl,
+        googleAvatarUrl: l.customer.googleAvatarUrl,
+        customerCode: l.customer.customerCode,
         stamps: l.stamps,
         availableRewards: l.availableRewards,
         totalEarnedStamps: l.totalEarnedStamps,
@@ -190,6 +236,9 @@ export class LoyaltyService {
         });
       }
 
+      // Sync active LoyaltyCard (cycle card)
+      await this.syncCycleCardStamps(tx, customerId, dto.quantity, settings);
+
       return result;
     });
 
@@ -235,6 +284,20 @@ export class LoyaltyService {
         },
       });
 
+      // Sync active LoyaltyCard (cycle card)
+      const activeCard = await tx.loyaltyCard.findFirst({
+        where: { customerId, status: LoyaltyCardStatus.ACTIVE },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (activeCard) {
+        const newStamps = Math.max(0, activeCard.stamps - dto.quantity);
+        await tx.loyaltyCard.update({
+          where: { id: activeCard.id },
+          data: { stamps: newStamps },
+        });
+      }
+
       return result;
     });
 
@@ -247,44 +310,58 @@ export class LoyaltyService {
     return { data: new CustomerLoyaltyResponseDto(updated, customer, history) };
   }
 
-  async adminRedeemReward(customerId: string): Promise<ApiResponse<CustomerLoyaltyResponseDto>> {
+  async adminRedeemReward(customerId: string): Promise<ApiResponse<{ redeemedCardId: string; message: string }>> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
       select: { id: true, fullName: true },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado.');
 
-    const { loyalty } = await this.getOrCreateLoyalty(customerId);
+    const completedCard = await this.prisma.loyaltyCard.findFirst({
+      where: { customerId, status: LoyaltyCardStatus.COMPLETED },
+      orderBy: { completedAt: 'asc' },
+    });
 
-    if (loyalty.availableRewards <= 0) {
-      throw new BadRequestException('Este cliente não possui brindes disponíveis.');
+    if (!completedCard) {
+      throw new BadRequestException('Este cliente não possui cartões completos para resgatar.');
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.customerLoyalty.update({
-        where: { id: loyalty.id },
-        data: { availableRewards: loyalty.availableRewards - 1 },
-      });
-
-      await tx.loyaltyStampHistory.create({
+    const redeemed = await this.prisma.$transaction(async (tx) => {
+      const card = await tx.loyaltyCard.update({
+        where: { id: completedCard.id },
         data: {
-          customerLoyalty: { connect: { id: loyalty.id } },
-          type: LoyaltyStampHistoryType.REWARD_REDEEMED,
-          quantity: 1,
-          reason: 'Brinde entregue pelo administrador.',
+          status: LoyaltyCardStatus.REDEEMED,
+          redeemedAt: new Date(),
         },
       });
 
-      return result;
+      // Also decrement availableRewards in CustomerLoyalty if it exists
+      const loyalty = await tx.customerLoyalty.findUnique({ where: { customerId } });
+      if (loyalty && loyalty.availableRewards > 0) {
+        await tx.customerLoyalty.update({
+          where: { id: loyalty.id },
+          data: { availableRewards: loyalty.availableRewards - 1 },
+        });
+
+        await tx.loyaltyStampHistory.create({
+          data: {
+            customerLoyalty: { connect: { id: loyalty.id } },
+            type: LoyaltyStampHistoryType.REWARD_REDEEMED,
+            quantity: 1,
+            reason: 'Brinde entregue pelo administrador.',
+          },
+        });
+      }
+
+      return card;
     });
 
-    const history = await this.prisma.loyaltyStampHistory.findMany({
-      where: { customerLoyaltyId: loyalty.id },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
-
-    return { data: new CustomerLoyaltyResponseDto(updated, customer, history) };
+    return {
+      data: {
+        redeemedCardId: redeemed.id,
+        message: `Brinde resgatado com sucesso para ${customer.fullName ?? 'o cliente'}.`,
+      },
+    };
   }
 
   // ─── Stamp ao concluir pedido (chamado pelo OrdersService) ─────────────────
@@ -296,20 +373,63 @@ export class LoyaltyService {
     });
 
     if (!order) return;
-    if (order.orderStatus !== OrderStatus.DELIVERED) return;
+    // Processa em PAID (PIX confirmado) ou DELIVERED (entregue)
+    if (order.orderStatus !== OrderStatus.DELIVERED && order.orderStatus !== OrderStatus.PAID) return;
     if (!order.customerId || !order.customer || order.customer.isGuest) return;
 
     const settings = await tx.loyaltySettings.findFirst();
     if (!settings || !settings.isEnabled) return;
 
-    if (Number(order.totalAmount) < Number(settings.minOrderAmount)) return;
+    const totalAmount = Number(order.totalAmount);
+    const minAmount = Number(settings.minOrderAmount);
 
+    // Quantidade de selos = floor(valorTotal / valorMínimo)
+    // Ex: R$16 = 1 selo, R$31 = 1 selo, R$32 = 2 selos, R$160 = 10 selos
+    const stampQuantity = Math.floor(totalAmount / minAmount);
+    if (stampQuantity < 1) return;
+
+    // Idempotência: impede carimbo duplicado no mesmo pedido
     const alreadyStamped = await tx.loyaltyStampHistory.findFirst({
       where: { orderId: order.id, type: LoyaltyStampHistoryType.ORDER_EARNED },
       select: { id: true },
     });
     if (alreadyStamped) return;
 
+    // ── LoyaltyCard (ciclo) ───────────────────────────────────────────────────
+    let cycleCard = await tx.loyaltyCard.findFirst({
+      where: { customerId: order.customerId, status: LoyaltyCardStatus.ACTIVE },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!cycleCard) {
+      cycleCard = await tx.loyaltyCard.create({
+        data: {
+          customer: { connect: { id: order.customerId } },
+          stamps: 0,
+          stampsRequired: settings.stampsRequired,
+          minOrderAmount: settings.minOrderAmount,
+          rewardDescription: settings.rewardDescription,
+          startedAt: new Date(),
+          expiresAt: addMonths(new Date(), settings.validityMonths),
+          status: LoyaltyCardStatus.ACTIVE,
+        },
+      });
+    }
+
+    // Soma os selos e limita ao máximo do cartão
+    const newCycleStamps = Math.min(cycleCard.stamps + stampQuantity, cycleCard.stampsRequired);
+    const cardCompleted = newCycleStamps >= cycleCard.stampsRequired;
+
+    await tx.loyaltyCard.update({
+      where: { id: cycleCard.id },
+      data: {
+        stamps: newCycleStamps,
+        status: cardCompleted ? LoyaltyCardStatus.COMPLETED : LoyaltyCardStatus.ACTIVE,
+        completedAt: cardCompleted ? new Date() : null,
+      },
+    });
+
+    // ── CustomerLoyalty + history (rastreamento admin) ────────────────────────
     let loyalty = await tx.customerLoyalty.findUnique({
       where: { customerId: order.customerId },
     });
@@ -324,17 +444,16 @@ export class LoyaltyService {
       });
     }
 
-    const newStamps = loyalty.stamps + 1;
-    const newTotalEarned = loyalty.totalEarnedStamps + 1;
-    const rewardsEarned = Math.floor(newStamps / settings.stampsRequired);
-    const finalStamps = newStamps % settings.stampsRequired;
+    const loyaltyNewStamps = loyalty.stamps + stampQuantity;
+    const rewardsEarned = cardCompleted ? 1 : 0;
+    const finalLoyaltyStamps = cardCompleted ? loyaltyNewStamps % settings.stampsRequired : loyaltyNewStamps;
 
     await tx.customerLoyalty.update({
       where: { id: loyalty.id },
       data: {
-        stamps: rewardsEarned > 0 ? finalStamps : newStamps,
+        stamps: finalLoyaltyStamps,
         availableRewards: loyalty.availableRewards + rewardsEarned,
-        totalEarnedStamps: newTotalEarned,
+        totalEarnedStamps: loyalty.totalEarnedStamps + stampQuantity,
       },
     });
 
@@ -343,8 +462,8 @@ export class LoyaltyService {
         customerLoyalty: { connect: { id: loyalty.id } },
         order: { connect: { id: order.id } },
         type: LoyaltyStampHistoryType.ORDER_EARNED,
-        quantity: 1,
-        reason: `Carimbo gerado pelo pedido ${order.orderNumber}.`,
+        quantity: stampQuantity,
+        reason: `${stampQuantity} carimbo(s) gerado(s) pelo pedido ${order.orderNumber} (R$${totalAmount.toFixed(2)}).`,
       },
     });
 
@@ -636,6 +755,45 @@ export class LoyaltyService {
     });
 
     return { loyalty, history };
+  }
+
+  private async syncCycleCardStamps(
+    tx: LoyaltyTx,
+    customerId: string,
+    quantity: number,
+    settings: { stampsRequired: number; minOrderAmount: object; rewardDescription: string; validityMonths: number },
+  ): Promise<void> {
+    let activeCard = await tx.loyaltyCard.findFirst({
+      where: { customerId, status: LoyaltyCardStatus.ACTIVE },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!activeCard) {
+      activeCard = await tx.loyaltyCard.create({
+        data: {
+          customer: { connect: { id: customerId } },
+          stamps: 0,
+          stampsRequired: settings.stampsRequired,
+          minOrderAmount: settings.minOrderAmount as Prisma.Decimal,
+          rewardDescription: settings.rewardDescription,
+          startedAt: new Date(),
+          expiresAt: addMonths(new Date(), settings.validityMonths),
+          status: LoyaltyCardStatus.ACTIVE,
+        },
+      });
+    }
+
+    const newStamps = Math.min(activeCard.stamps + quantity, activeCard.stampsRequired);
+    const cardCompleted = newStamps >= activeCard.stampsRequired;
+
+    await tx.loyaltyCard.update({
+      where: { id: activeCard.id },
+      data: {
+        stamps: newStamps,
+        status: cardCompleted ? LoyaltyCardStatus.COMPLETED : LoyaltyCardStatus.ACTIVE,
+        completedAt: cardCompleted ? new Date() : null,
+      },
+    });
   }
 
   private async findCardsByCustomer(customerId: string): Promise<LoyaltyCardResponseDto[]> {
