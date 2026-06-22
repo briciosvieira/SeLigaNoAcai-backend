@@ -562,8 +562,8 @@ export class AuthService {
     const updated = await this.prisma.customer.update({
       where: { id: customerId },
       data: {
-        ...(dto.termsAccepted && { termsAcceptedAt: now, termsVersion: dto.termsVersion ?? null }),
-        ...(dto.privacyAccepted && { privacyAcceptedAt: now, privacyVersion: dto.privacyVersion ?? null }),
+        ...(dto.termsAccepted && !customer.termsAcceptedAt && { termsAcceptedAt: now, termsVersion: dto.termsVersion ?? null }),
+        ...(dto.privacyAccepted && !customer.privacyAcceptedAt && { privacyAcceptedAt: now, privacyVersion: dto.privacyVersion ?? null }),
       },
     });
 

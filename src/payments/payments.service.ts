@@ -263,6 +263,8 @@ export class PaymentsService {
           paymentId: payment.id,
           orderId: payment.orderId,
           paidAt: interPayment.paidAt ?? new Date(),
+          endToEndId: interPayment.endToEndId,
+          amountPaid: interPayment.amountPaid,
         });
       });
 
@@ -349,10 +351,7 @@ export class PaymentsService {
     const pixItems = payload.pix ?? [];
 
     if (pixItems.length === 0) {
-      return {
-        received: true,
-        processed: 0,
-      };
+      return { received: true, processed: 0 };
     }
 
     let processed = 0;
@@ -363,10 +362,7 @@ export class PaymentsService {
       }
 
       const payment = await this.prisma.payment.findFirst({
-        where: {
-          provider: 'INTER',
-          providerPaymentId: pix.txid,
-        },
+        where: { provider: 'INTER', providerPaymentId: pix.txid },
       });
 
       if (!payment) {
@@ -377,21 +373,41 @@ export class PaymentsService {
         continue;
       }
 
+      const receivedAmount = pix.valor ? Number(pix.valor) : null;
+      const expectedAmount = Number(payment.amount);
+
+      if (
+        receivedAmount !== null &&
+        Number.isFinite(expectedAmount) &&
+        Number.isFinite(receivedAmount) &&
+        Math.abs(expectedAmount - receivedAmount) > 0.01
+      ) {
+        console.error(
+          `[PIX Webhook] Valor divergente — esperado: ${expectedAmount}, recebido: ${receivedAmount}, txid: ${pix.txid}`,
+        );
+        continue;
+      }
+
+      const payerDocument = pix.pagador?.cpf ?? pix.pagador?.cnpj ?? null;
+
       await this.prisma.$transaction(async (tx) => {
         await this.markPaymentAsPaid(tx, {
           paymentId: payment.id,
           orderId: payment.orderId,
           paidAt: pix.horario ? new Date(pix.horario) : new Date(),
+          endToEndId: pix.endToEndId ?? null,
+          amountPaid: receivedAmount,
+          payerName: pix.pagador?.nome ?? pix.infoPagador ?? null,
+          payerDocument,
+          payerBank: pix.pagador?.instituicao ?? null,
+          webhookPayload: payload,
         });
       });
 
       processed += 1;
     }
 
-    return {
-      received: true,
-      processed,
-    };
+    return { received: true, processed };
   }
 
   private async markPaymentAsPaid(
@@ -400,16 +416,26 @@ export class PaymentsService {
       paymentId: string;
       orderId: string;
       paidAt: Date;
+      endToEndId?: string | null;
+      amountPaid?: number | null;
+      payerName?: string | null;
+      payerDocument?: string | null;
+      payerBank?: string | null;
+      webhookPayload?: unknown;
     },
   ) {
     const updatedPayment = await tx.payment.update({
-      where: {
-        id: params.paymentId,
-      },
+      where: { id: params.paymentId },
       data: {
         status: PaymentStatus.PAID,
         paidAt: params.paidAt,
         failedReason: null,
+        ...(params.endToEndId !== undefined && { providerEndToEndId: params.endToEndId }),
+        ...(params.amountPaid !== null && params.amountPaid !== undefined && { amountPaid: params.amountPaid }),
+        ...(params.payerName !== undefined && { payerName: params.payerName }),
+        ...(params.payerDocument !== undefined && { payerDocument: params.payerDocument }),
+        ...(params.payerBank !== undefined && { payerBank: params.payerBank }),
+        ...(params.webhookPayload !== undefined && { webhookPayload: params.webhookPayload as any }),
       },
     });
 
