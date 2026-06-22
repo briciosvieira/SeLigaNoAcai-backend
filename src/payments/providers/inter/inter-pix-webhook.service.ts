@@ -1,11 +1,25 @@
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
 import { InterAuthService } from './inter-auth.service';
+
+type WebhookStatus =
+  | 'REGISTERED'
+  | 'NOT_REGISTERED'
+  | 'CONFIG_ERROR'
+  | 'INTER_FORBIDDEN'
+  | 'ERROR';
+
+type WebhookResult = {
+  success?: boolean;
+  expectedWebhookUrl: string | null;
+  registeredWebhookUrl?: string | null;
+  webhookUrl?: string | null;
+  isRegistered?: boolean;
+  status: WebhookStatus;
+  message: string;
+  error?: string;
+};
 
 @Injectable()
 export class InterPixWebhookService {
@@ -14,13 +28,30 @@ export class InterPixWebhookService {
     private readonly interAuthService: InterAuthService,
   ) {}
 
-  validatePixWebhookUrl() {
-    const expectedWebhookUrl = this.getRequiredEnv('INTER_PIX_WEBHOOK_URL');
+  // POST /admin/inter/pix/webhook/validate
+  validatePixWebhookUrl(): WebhookResult {
+    const expectedWebhookUrl = this.configService.get<string>(
+      'INTER_PIX_WEBHOOK_URL',
+    );
+
+    if (!expectedWebhookUrl) {
+      return {
+        success: false,
+        expectedWebhookUrl: null,
+        isRegistered: false,
+        status: 'CONFIG_ERROR',
+        message: 'INTER_PIX_WEBHOOK_URL não configurada no backend.',
+      };
+    }
 
     if (!expectedWebhookUrl.startsWith('https://')) {
-      throw new BadRequestException(
-        'INTER_PIX_WEBHOOK_URL deve usar HTTPS. O Banco Inter não aceita HTTP.',
-      );
+      return {
+        success: false,
+        expectedWebhookUrl,
+        isRegistered: false,
+        status: 'CONFIG_ERROR',
+        message: 'INTER_PIX_WEBHOOK_URL deve usar HTTPS. O Banco Inter não aceita HTTP.',
+      };
     }
 
     if (
@@ -28,35 +59,168 @@ export class InterPixWebhookService {
       expectedWebhookUrl.includes('127.0.0.1') ||
       expectedWebhookUrl.includes('0.0.0.0')
     ) {
-      throw new BadRequestException(
-        'INTER_PIX_WEBHOOK_URL não pode ser localhost. Configure um domínio público acessível pelo Banco Inter.',
-      );
+      return {
+        success: false,
+        expectedWebhookUrl,
+        isRegistered: false,
+        status: 'CONFIG_ERROR',
+        message:
+          'INTER_PIX_WEBHOOK_URL não pode ser localhost. Configure um domínio público acessível pelo Banco Inter.',
+      };
     }
 
     try {
       new URL(expectedWebhookUrl);
     } catch {
-      throw new BadRequestException(
-        `INTER_PIX_WEBHOOK_URL inválida: "${expectedWebhookUrl}".`,
-      );
+      return {
+        success: false,
+        expectedWebhookUrl,
+        isRegistered: false,
+        status: 'CONFIG_ERROR',
+        message: `INTER_PIX_WEBHOOK_URL inválida: "${expectedWebhookUrl}".`,
+      };
     }
 
     return {
       success: true,
-      message: 'URL do webhook validada com sucesso.',
       expectedWebhookUrl,
+      status: 'REGISTERED',
+      message: 'URL do webhook validada com sucesso.',
     };
   }
 
-  async registerPixWebhook() {
-    const expectedWebhookUrl = this.getRequiredEnv('INTER_PIX_WEBHOOK_URL');
-    const pixKey = this.getRequiredEnv('INTER_PIX_KEY');
+  // GET /admin/inter/pix/webhook — nunca lança exceção
+  async getPixWebhook(): Promise<WebhookResult> {
+    const expectedWebhookUrl =
+      this.configService.get<string>('INTER_PIX_WEBHOOK_URL') ?? null;
+
+    const pixKey = this.configService.get<string>('INTER_PIX_KEY');
+
+    if (!expectedWebhookUrl || !pixKey) {
+      return {
+        expectedWebhookUrl,
+        registeredWebhookUrl: null,
+        webhookUrl: null,
+        isRegistered: false,
+        status: 'CONFIG_ERROR',
+        message: !expectedWebhookUrl
+          ? 'INTER_PIX_WEBHOOK_URL não configurada no backend.'
+          : 'INTER_PIX_KEY não configurada no backend.',
+      };
+    }
+
     const webhookApiUrl = this.buildWebhookApiUrl(pixKey);
 
-    const accessToken = await this.interAuthService.getAccessToken();
-    const httpsAgent = this.interAuthService.getHttpsAgent();
+    try {
+      const accessToken = await this.interAuthService.getAccessToken();
+      const httpsAgent = this.interAuthService.getHttpsAgent();
+
+      const response = await axios.get<{ webhookUrl?: string }>(webhookApiUrl, {
+        httpsAgent,
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 15_000,
+      });
+
+      const registeredWebhookUrl = response.data?.webhookUrl ?? null;
+      const isRegistered =
+        registeredWebhookUrl !== null &&
+        registeredWebhookUrl === expectedWebhookUrl;
+
+      return {
+        expectedWebhookUrl,
+        registeredWebhookUrl,
+        webhookUrl: registeredWebhookUrl,
+        isRegistered,
+        status: isRegistered ? 'REGISTERED' : 'NOT_REGISTERED',
+        message: isRegistered
+          ? 'Webhook cadastrado corretamente.'
+          : 'Webhook cadastrado com URL diferente da esperada.',
+      };
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const status = error.response?.status;
+
+        if (status === 404) {
+          return {
+            expectedWebhookUrl,
+            registeredWebhookUrl: null,
+            webhookUrl: null,
+            isRegistered: false,
+            status: 'NOT_REGISTERED',
+            message: 'Nenhum webhook cadastrado encontrado.',
+          };
+        }
+
+        if (status === 403) {
+          return {
+            expectedWebhookUrl,
+            registeredWebhookUrl: null,
+            webhookUrl: null,
+            isRegistered: false,
+            status: 'INTER_FORBIDDEN',
+            message:
+              'Integração Inter sem escopo necessário para webhook. Verifique webhook.write/webhook.read.',
+          };
+        }
+
+        return {
+          expectedWebhookUrl,
+          registeredWebhookUrl: null,
+          webhookUrl: null,
+          isRegistered: false,
+          status: 'ERROR',
+          message: 'Não foi possível consultar o webhook no Inter.',
+          error: `HTTP ${status ?? 'sem status'} do Banco Inter`,
+        };
+      }
+
+      return {
+        expectedWebhookUrl,
+        registeredWebhookUrl: null,
+        webhookUrl: null,
+        isRegistered: false,
+        status: 'ERROR',
+        message: 'Não foi possível consultar o webhook no Inter.',
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+      };
+    }
+  }
+
+  // POST /admin/inter/pix/webhook/register
+  async registerPixWebhook(): Promise<WebhookResult> {
+    const expectedWebhookUrl =
+      this.configService.get<string>('INTER_PIX_WEBHOOK_URL') ?? null;
+
+    const pixKey = this.configService.get<string>('INTER_PIX_KEY');
+
+    if (!expectedWebhookUrl) {
+      return {
+        success: false,
+        expectedWebhookUrl: null,
+        registeredWebhookUrl: null,
+        isRegistered: false,
+        status: 'CONFIG_ERROR',
+        message: 'INTER_PIX_WEBHOOK_URL não configurada no backend.',
+      };
+    }
+
+    if (!pixKey) {
+      return {
+        success: false,
+        expectedWebhookUrl,
+        registeredWebhookUrl: null,
+        isRegistered: false,
+        status: 'CONFIG_ERROR',
+        message: 'INTER_PIX_KEY não configurada no backend.',
+      };
+    }
+
+    const webhookApiUrl = this.buildWebhookApiUrl(pixKey);
 
     try {
+      const accessToken = await this.interAuthService.getAccessToken();
+      const httpsAgent = this.interAuthService.getHttpsAgent();
+
       await axios.put(
         webhookApiUrl,
         { webhookUrl: expectedWebhookUrl },
@@ -70,95 +234,64 @@ export class InterPixWebhookService {
         },
       );
 
-      return {
-        success: true,
-        message: 'Webhook PIX Inter cadastrado com sucesso.',
-        expectedWebhookUrl,
-        registeredWebhookUrl: expectedWebhookUrl,
-      };
-    } catch (error) {
-      this.handleInterError(
-        error,
-        'Não foi possível cadastrar o webhook no Banco Inter.',
-      );
-    }
-  }
-
-  async getPixWebhook() {
-    const expectedWebhookUrl = this.getRequiredEnv('INTER_PIX_WEBHOOK_URL');
-    const pixKey = this.getRequiredEnv('INTER_PIX_KEY');
-    const webhookApiUrl = this.buildWebhookApiUrl(pixKey);
-
-    const accessToken = await this.interAuthService.getAccessToken();
-    const httpsAgent = this.interAuthService.getHttpsAgent();
-
-    try {
-      const response = await axios.get<{ webhookUrl?: string }>(
-        webhookApiUrl,
-        {
-          httpsAgent,
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          timeout: 15_000,
-        },
-      );
-
-      const registeredWebhookUrl = response.data?.webhookUrl ?? null;
+      // Confirma consultando o Inter após o registro
+      const confirm = await this.getPixWebhook();
+      const isRegistered = confirm.registeredWebhookUrl === expectedWebhookUrl;
 
       return {
+        success: isRegistered,
         expectedWebhookUrl,
-        registeredWebhookUrl,
-        webhookUrl: registeredWebhookUrl,
-        isRegistered:
-          registeredWebhookUrl !== null &&
-          registeredWebhookUrl === expectedWebhookUrl,
+        registeredWebhookUrl: confirm.registeredWebhookUrl ?? null,
+        webhookUrl: confirm.registeredWebhookUrl ?? null,
+        isRegistered,
+        status: isRegistered ? 'REGISTERED' : 'ERROR',
+        message: isRegistered
+          ? 'Webhook PIX Inter cadastrado com sucesso.'
+          : 'Webhook registrado no Inter mas confirmação retornou URL diferente.',
       };
     } catch (error) {
-      if (error instanceof AxiosError && error.response?.status === 404) {
+      if (error instanceof AxiosError) {
+        const status = error.response?.status;
+
+        if (status === 403) {
+          return {
+            success: false,
+            expectedWebhookUrl,
+            registeredWebhookUrl: null,
+            isRegistered: false,
+            status: 'INTER_FORBIDDEN',
+            message:
+              'Integração Inter sem escopo necessário para webhook. Verifique webhook.write/webhook.read.',
+          };
+        }
+
         return {
+          success: false,
           expectedWebhookUrl,
           registeredWebhookUrl: null,
-          webhookUrl: null,
           isRegistered: false,
-          message: 'Nenhum webhook cadastrado encontrado.',
+          status: 'ERROR',
+          message: 'Não foi possível cadastrar o webhook no Banco Inter.',
+          error: `HTTP ${status ?? 'sem status'} do Banco Inter`,
         };
       }
 
-      this.handleInterError(
-        error,
-        'Não foi possível consultar o webhook no Banco Inter.',
-      );
+      return {
+        success: false,
+        expectedWebhookUrl,
+        registeredWebhookUrl: null,
+        isRegistered: false,
+        status: 'ERROR',
+        message: 'Não foi possível cadastrar o webhook no Banco Inter.',
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+      };
     }
   }
 
   private buildWebhookApiUrl(pixKey: string): string {
-    const pixCobUrl = this.getRequiredEnv('INTER_PIX_COB_URL');
+    const pixCobUrl =
+      this.configService.get<string>('INTER_PIX_COB_URL') ?? '';
     const baseV2 = pixCobUrl.replace(/\/cob\/?$/, '');
     return `${baseV2}/webhook/${encodeURIComponent(pixKey)}`;
-  }
-
-  private getRequiredEnv(key: string): string {
-    const value = this.configService.get<string>(key);
-
-    if (!value) {
-      throw new InternalServerErrorException(
-        `Variável de ambiente ${key} não configurada.`,
-      );
-    }
-
-    return value;
-  }
-
-  private handleInterError(error: unknown, fallbackMessage: string): never {
-    if (error instanceof AxiosError) {
-      throw new InternalServerErrorException({
-        message: fallbackMessage,
-        httpStatus: error.response?.status,
-        interError: error.response?.data,
-      });
-    }
-
-    throw new InternalServerErrorException(fallbackMessage);
   }
 }
