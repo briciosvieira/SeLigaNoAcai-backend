@@ -71,6 +71,12 @@ export type InterPixWebhookPayment = {
   valor?: string;
   horario?: string;
   infoPagador?: string;
+  pagador?: {
+    nome?: string;
+    cpf?: string;
+    cnpj?: string;
+    instituicao?: string;
+  };
   devolucoes?: unknown[];
 };
 
@@ -104,5 +110,7 @@ export type InterPixProviderGetChargeResult = {
   status: InterPixChargeStatus | null;
   isPaid: boolean;
   paidAt: Date | null;
+  endToEndId: string | null;
+  amountPaid: number | null;
   raw: InterGetPixChargeResponse;
 };

@@ -145,6 +145,8 @@ export class InterPixService {
         status: data.status ?? null,
         isPaid: data.status === 'CONCLUIDA',
         paidAt: paidPix?.horario ? new Date(paidPix.horario) : null,
+        endToEndId: paidPix?.endToEndId ?? null,
+        amountPaid: paidPix?.valor ? Number(paidPix.valor) : null,
         raw: data,
       };
     } catch (error) {
