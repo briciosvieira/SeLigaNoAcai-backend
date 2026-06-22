@@ -7,17 +7,6 @@ import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
 import { InterAuthService } from './inter-auth.service';
 
-type RegisterResult = {
-  success: boolean;
-  message: string;
-  webhookUrl: string;
-};
-
-type GetResult = {
-  webhookUrl: string | null;
-  message?: string;
-};
-
 @Injectable()
 export class InterPixWebhookService {
   constructor(
@@ -25,19 +14,19 @@ export class InterPixWebhookService {
     private readonly interAuthService: InterAuthService,
   ) {}
 
-  validatePixWebhookUrl(): { success: boolean; message: string; webhookUrl: string } {
-    const webhookUrl = this.getRequiredEnv('INTER_PIX_WEBHOOK_URL');
+  validatePixWebhookUrl() {
+    const expectedWebhookUrl = this.getRequiredEnv('INTER_PIX_WEBHOOK_URL');
 
-    if (!webhookUrl.startsWith('https://')) {
+    if (!expectedWebhookUrl.startsWith('https://')) {
       throw new BadRequestException(
         'INTER_PIX_WEBHOOK_URL deve usar HTTPS. O Banco Inter não aceita HTTP.',
       );
     }
 
     if (
-      webhookUrl.includes('localhost') ||
-      webhookUrl.includes('127.0.0.1') ||
-      webhookUrl.includes('0.0.0.0')
+      expectedWebhookUrl.includes('localhost') ||
+      expectedWebhookUrl.includes('127.0.0.1') ||
+      expectedWebhookUrl.includes('0.0.0.0')
     ) {
       throw new BadRequestException(
         'INTER_PIX_WEBHOOK_URL não pode ser localhost. Configure um domínio público acessível pelo Banco Inter.',
@@ -45,22 +34,22 @@ export class InterPixWebhookService {
     }
 
     try {
-      new URL(webhookUrl);
+      new URL(expectedWebhookUrl);
     } catch {
       throw new BadRequestException(
-        `INTER_PIX_WEBHOOK_URL inválida: "${webhookUrl}".`,
+        `INTER_PIX_WEBHOOK_URL inválida: "${expectedWebhookUrl}".`,
       );
     }
 
     return {
       success: true,
-      message: 'URL do webhook validada com sucesso. Pronta para cadastro no Banco Inter.',
-      webhookUrl,
+      message: 'URL do webhook validada com sucesso.',
+      expectedWebhookUrl,
     };
   }
 
-  async registerPixWebhook(): Promise<RegisterResult> {
-    const webhookUrl = this.getRequiredEnv('INTER_PIX_WEBHOOK_URL');
+  async registerPixWebhook() {
+    const expectedWebhookUrl = this.getRequiredEnv('INTER_PIX_WEBHOOK_URL');
     const pixKey = this.getRequiredEnv('INTER_PIX_KEY');
     const webhookApiUrl = this.buildWebhookApiUrl(pixKey);
 
@@ -70,7 +59,7 @@ export class InterPixWebhookService {
     try {
       await axios.put(
         webhookApiUrl,
-        { webhookUrl },
+        { webhookUrl: expectedWebhookUrl },
         {
           httpsAgent,
           headers: {
@@ -83,8 +72,9 @@ export class InterPixWebhookService {
 
       return {
         success: true,
-        message: 'Webhook Pix Inter cadastrado com sucesso.',
-        webhookUrl,
+        message: 'Webhook PIX Inter cadastrado com sucesso.',
+        expectedWebhookUrl,
+        registeredWebhookUrl: expectedWebhookUrl,
       };
     } catch (error) {
       this.handleInterError(
@@ -94,7 +84,8 @@ export class InterPixWebhookService {
     }
   }
 
-  async getPixWebhook(): Promise<GetResult> {
+  async getPixWebhook() {
+    const expectedWebhookUrl = this.getRequiredEnv('INTER_PIX_WEBHOOK_URL');
     const pixKey = this.getRequiredEnv('INTER_PIX_KEY');
     const webhookApiUrl = this.buildWebhookApiUrl(pixKey);
 
@@ -113,13 +104,23 @@ export class InterPixWebhookService {
         },
       );
 
+      const registeredWebhookUrl = response.data?.webhookUrl ?? null;
+
       return {
-        webhookUrl: response.data?.webhookUrl ?? null,
+        expectedWebhookUrl,
+        registeredWebhookUrl,
+        webhookUrl: registeredWebhookUrl,
+        isRegistered:
+          registeredWebhookUrl !== null &&
+          registeredWebhookUrl === expectedWebhookUrl,
       };
     } catch (error) {
       if (error instanceof AxiosError && error.response?.status === 404) {
         return {
+          expectedWebhookUrl,
+          registeredWebhookUrl: null,
           webhookUrl: null,
+          isRegistered: false,
           message: 'Nenhum webhook cadastrado encontrado.',
         };
       }
