@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
@@ -16,7 +15,7 @@ type RegisterResult = {
 
 type GetResult = {
   webhookUrl: string | null;
-  raw: unknown;
+  message?: string;
 };
 
 @Injectable()
@@ -116,13 +115,13 @@ export class InterPixWebhookService {
 
       return {
         webhookUrl: response.data?.webhookUrl ?? null,
-        raw: response.data,
       };
     } catch (error) {
       if (error instanceof AxiosError && error.response?.status === 404) {
-        throw new NotFoundException(
-          'Nenhum webhook Pix cadastrado no Banco Inter para esta chave PIX.',
-        );
+        return {
+          webhookUrl: null,
+          message: 'Nenhum webhook cadastrado encontrado.',
+        };
       }
 
       this.handleInterError(
