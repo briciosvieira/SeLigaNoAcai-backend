@@ -30,12 +30,16 @@ export class AnnouncementsAdminController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<ApiResponse<AnnouncementResponseDto>> {
+  async findOne(
+    @Param('id') id: string,
+  ): Promise<ApiResponse<AnnouncementResponseDto>> {
     return this.service.findOne(id);
   }
 
   @Post()
-  async create(@Body() dto: CreateAnnouncementDto): Promise<ApiResponse<AnnouncementResponseDto>> {
+  async create(
+    @Body() dto: CreateAnnouncementDto,
+  ): Promise<ApiResponse<AnnouncementResponseDto>> {
     return this.service.create(dto);
   }
 
@@ -48,7 +52,9 @@ export class AnnouncementsAdminController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string): Promise<ApiResponse<{ deleted: boolean }>> {
+  async remove(
+    @Param('id') id: string,
+  ): Promise<ApiResponse<{ deleted: boolean }>> {
     return this.service.remove(id);
   }
 }

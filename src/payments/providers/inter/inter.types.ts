@@ -112,5 +112,22 @@ export type InterPixProviderGetChargeResult = {
   paidAt: Date | null;
   endToEndId: string | null;
   amountPaid: number | null;
+  payerName: string | null;
+  payerDocument: string | null;
+  payerBank: string | null;
   raw: InterGetPixChargeResponse;
+};
+
+export type InterListReceivedPixResponse = {
+  pix?: InterPixWebhookPayment[];
+  parametros?: {
+    inicio: string;
+    fim: string;
+    paginacao?: {
+      paginaAtual: number;
+      itensPorPagina: number;
+      quantidadeDePaginas: number;
+      quantidadeTotalDeItens: number;
+    };
+  };
 };

@@ -25,7 +25,9 @@ export class AnnouncementsService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return { data: announcement ? new AnnouncementResponseDto(announcement) : null };
+    return {
+      data: announcement ? new AnnouncementResponseDto(announcement) : null,
+    };
   }
 
   async findAll(): Promise<ApiResponse<AnnouncementResponseDto[]>> {
@@ -36,12 +38,17 @@ export class AnnouncementsService {
   }
 
   async findOne(id: string): Promise<ApiResponse<AnnouncementResponseDto>> {
-    const announcement = await this.prisma.siteAnnouncement.findUnique({ where: { id } });
-    if (!announcement) throw new NotFoundException('Informativo não encontrado.');
+    const announcement = await this.prisma.siteAnnouncement.findUnique({
+      where: { id },
+    });
+    if (!announcement)
+      throw new NotFoundException('Informativo não encontrado.');
     return { data: new AnnouncementResponseDto(announcement) };
   }
 
-  async create(dto: CreateAnnouncementDto): Promise<ApiResponse<AnnouncementResponseDto>> {
+  async create(
+    dto: CreateAnnouncementDto,
+  ): Promise<ApiResponse<AnnouncementResponseDto>> {
     try {
       const announcement = await this.prisma.siteAnnouncement.create({
         data: {
@@ -54,13 +61,20 @@ export class AnnouncementsService {
       return { data: new AnnouncementResponseDto(announcement) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
-      throw new InternalServerErrorException('Não foi possível criar o informativo.');
+      throw new InternalServerErrorException(
+        'Não foi possível criar o informativo.',
+      );
     }
   }
 
-  async update(id: string, dto: UpdateAnnouncementDto): Promise<ApiResponse<AnnouncementResponseDto>> {
+  async update(
+    id: string,
+    dto: UpdateAnnouncementDto,
+  ): Promise<ApiResponse<AnnouncementResponseDto>> {
     try {
-      const existing = await this.prisma.siteAnnouncement.findUnique({ where: { id } });
+      const existing = await this.prisma.siteAnnouncement.findUnique({
+        where: { id },
+      });
       if (!existing) throw new NotFoundException('Informativo não encontrado.');
 
       const announcement = await this.prisma.siteAnnouncement.update({
@@ -75,19 +89,25 @@ export class AnnouncementsService {
       return { data: new AnnouncementResponseDto(announcement) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
-      throw new InternalServerErrorException('Não foi possível atualizar o informativo.');
+      throw new InternalServerErrorException(
+        'Não foi possível atualizar o informativo.',
+      );
     }
   }
 
   async remove(id: string): Promise<ApiResponse<{ deleted: boolean }>> {
     try {
-      const existing = await this.prisma.siteAnnouncement.findUnique({ where: { id } });
+      const existing = await this.prisma.siteAnnouncement.findUnique({
+        where: { id },
+      });
       if (!existing) throw new NotFoundException('Informativo não encontrado.');
       await this.prisma.siteAnnouncement.delete({ where: { id } });
       return { data: { deleted: true } };
     } catch (error) {
       if (error instanceof HttpException) throw error;
-      throw new InternalServerErrorException('Não foi possível remover o informativo.');
+      throw new InternalServerErrorException(
+        'Não foi possível remover o informativo.',
+      );
     }
   }
 }

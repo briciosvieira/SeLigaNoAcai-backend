@@ -11,9 +11,11 @@ import type {
   InterCreatePixChargeRequest,
   InterCreatePixChargeResponse,
   InterGetPixChargeResponse,
+  InterListReceivedPixResponse,
   InterPixProviderCreateChargeParams,
   InterPixProviderCreateChargeResult,
   InterPixProviderGetChargeResult,
+  InterPixWebhookPayment,
 } from './inter.types';
 
 const PIX_PUT_TIMEOUT_MS = 30_000;
@@ -147,12 +149,60 @@ export class InterPixService {
         paidAt: paidPix?.horario ? new Date(paidPix.horario) : null,
         endToEndId: paidPix?.endToEndId ?? null,
         amountPaid: paidPix?.valor ? Number(paidPix.valor) : null,
+        payerName: paidPix?.pagador?.nome ?? paidPix?.infoPagador ?? null,
+        payerDocument: paidPix?.pagador?.cpf ?? paidPix?.pagador?.cnpj ?? null,
+        payerBank: paidPix?.pagador?.instituicao ?? null,
         raw: data,
       };
     } catch (error) {
       this.handleInterError(
         error,
         'Não foi possível consultar a cobrança PIX.',
+      );
+    }
+  }
+
+  async listReceivedPix(params: {
+    start: Date;
+    end: Date;
+    txid?: string;
+  }): Promise<InterPixWebhookPayment[]> {
+    const accessToken = await this.interAuthService.getAccessToken();
+    const pixCobUrl = this.getRequiredEnv('INTER_PIX_COB_URL');
+    const baseV2 = pixCobUrl.replace(/\/cob\/?$/, '');
+    const pixReceivedUrl = `${baseV2}/pix`;
+
+    const toIso = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+    const queryParams: Record<string, string> = {
+      inicio: toIso(params.start),
+      fim: toIso(params.end),
+    };
+
+    if (params.txid) {
+      queryParams.txid = params.txid;
+    }
+
+    try {
+      const response = await axios.get<InterListReceivedPixResponse>(
+        pixReceivedUrl,
+        {
+          httpsAgent: this.interAuthService.getHttpsAgent(),
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: queryParams,
+          timeout: PIX_GET_TIMEOUT_MS,
+        },
+      );
+
+      return response.data?.pix ?? [];
+    } catch (error) {
+      if (error instanceof AxiosError && error.response?.status === 404) {
+        return [];
+      }
+
+      this.handleInterError(
+        error,
+        'Não foi possível listar Pix recebidos no Inter.',
       );
     }
   }
