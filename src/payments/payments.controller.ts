@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -22,10 +23,14 @@ import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
 import type { InterPixWebhookPayload } from './providers/inter/inter.types';
 import { PaymentsService } from './payments.service';
 import { CreateManualPaymentDto } from './dto/create-manual-payment.dto';
+import { PixSyncService } from './pix-sync.service';
 
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly service: PaymentsService) {}
+  constructor(
+    private readonly service: PaymentsService,
+    private readonly pixSyncService: PixSyncService,
+  ) {}
 
   @Post('webhook/inter')
   async handleInterWebhook(
@@ -128,6 +133,16 @@ export class PaymentsController {
     return {
       data: payment,
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('my/order/:orderId/pix/sync')
+  @HttpCode(200)
+  async syncMyOrderPix(
+    @Param('orderId') orderId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.pixSyncService.syncOrderPixForCustomer(orderId, user.id);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -561,6 +561,11 @@ model Payment {
   paidAt       DateTime? @map("paid_at")
   failedReason String?   @map("failed_reason")
 
+  pixStatusCheckAttempts  Int       @default(0)  @map("pix_status_check_attempts")
+  nextPixStatusCheckAt    DateTime? @map("next_pix_status_check_at")
+  lastPixStatusCheckedAt  DateTime? @map("last_pix_status_checked_at")
+  pixStatusCheckFinished  Boolean   @default(false) @map("pix_status_check_finished")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

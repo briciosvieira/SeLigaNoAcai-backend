@@ -7,6 +7,6 @@ import { AdminCustomersController } from './admin-customers.controller';
 @Module({
   imports: [PrismaModule],
   providers: [AdminUsersService],
-  controllers: [AdminUsersController,AdminCustomersController],
+  controllers: [AdminUsersController, AdminCustomersController],
 })
 export class AdminModule {}

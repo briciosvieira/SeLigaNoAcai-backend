@@ -217,6 +217,9 @@ export class PaymentsService {
           pixQrCode: interCharge.pixQrCodeBase64,
           pixExpiresAt: interCharge.pixExpiresAt,
           status: PaymentStatus.PENDING,
+          pixStatusCheckAttempts: 0,
+          pixStatusCheckFinished: false,
+          nextPixStatusCheckAt: new Date(Date.now() + 30_000),
         },
       });
 
@@ -430,6 +433,8 @@ export class PaymentsService {
         status: PaymentStatus.PAID,
         paidAt: params.paidAt,
         failedReason: null,
+        pixStatusCheckFinished: true,
+        lastPixStatusCheckedAt: new Date(),
         ...(params.endToEndId !== undefined && { providerEndToEndId: params.endToEndId }),
         ...(params.amountPaid !== null && params.amountPaid !== undefined && { amountPaid: params.amountPaid }),
         ...(params.payerName !== undefined && { payerName: params.payerName }),
