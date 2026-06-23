@@ -20,10 +20,10 @@ RUN npx prisma generate --no-check-order
 RUN npm run build
 
 # Garante que as pastas de upload existam
-RUN mkdir -p uploads/products uploads/store
+RUN mkdir -p uploads/products uploads/store uploads/banners uploads/loyalty uploads/announcements uploads/customers
 
 RUN chmod +x entrypoint.sh
 
-EXPOSE 3000
+EXPOSE 3131
 
 ENTRYPOINT ["dumb-init", "--", "/app/entrypoint.sh"]
