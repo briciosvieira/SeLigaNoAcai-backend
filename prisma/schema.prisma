@@ -200,8 +200,9 @@ model Customer {
   refreshTokenHash String?   @map("refresh_token_hash")
   lastLoginAt      DateTime? @map("last_login_at")
 
-  isGuest  Boolean @default(true) @map("is_guest")
-  isActive Boolean @default(true) @map("is_active")
+  isGuest            Boolean @default(true) @map("is_guest")
+  isActive           Boolean @default(true) @map("is_active")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -865,4 +866,23 @@ model SiteAnnouncement {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("site_announcements")
+}
+
+model PasswordRecoverySetting {
+  id              String   @id @default(uuid())
+  enabled         Boolean  @default(true)
+  subjectTemplate String?  @map("subject_template") @db.VarChar(255)
+  bodyTemplate    String?  @map("body_template") @db.Text
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("password_recovery_settings")
+}
+
+model PasswordRecoveryAttempt {
+  id        String   @id @default(uuid())
+  email     String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email, createdAt])
+  @@map("password_recovery_attempts")
 }

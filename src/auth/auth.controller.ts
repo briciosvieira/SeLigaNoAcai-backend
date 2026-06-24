@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthResponseDto, AuthUserResponseDto } from './dto/auth-response.dto';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -12,10 +20,18 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { ChangeMyPasswordDto } from './dto/change-my-password.dto';
 import { LegalAcceptanceDto } from './dto/legal-acceptance.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { PasswordRecoveryService } from './password-recovery/password-recovery.service';
+
+const FORGOT_PASSWORD_GENERIC_RESPONSE =
+  'Se este e-mail estiver cadastrado, você receberá as instruções em breve.';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly service: AuthService) {}
+  constructor(
+    private readonly service: AuthService,
+    private readonly passwordRecoveryService: PasswordRecoveryService,
+  ) {}
 
   @Post('register')
   async register(
@@ -107,6 +123,15 @@ export class AuthController {
     return {
       data: customer,
     };
+  }
+
+  @Post('customer/forgot-password')
+  @HttpCode(200)
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+  ): Promise<ApiResponse<{ message: string }>> {
+    await this.passwordRecoveryService.forgotPassword(dto.email);
+    return { data: { message: FORGOT_PASSWORD_GENERIC_RESPONSE } };
   }
 
   @UseGuards(JwtAuthGuard)
