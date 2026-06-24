@@ -13,6 +13,7 @@ export class AuthUserResponseDto {
   authProvider: string;
   isGuest: boolean;
   isActive: boolean;
+  mustChangePassword: boolean;
   termsAcceptedAt: Date | null;
   privacyAcceptedAt: Date | null;
   termsVersion: string | null;
@@ -33,6 +34,7 @@ export class AuthUserResponseDto {
     this.authProvider = customer.authProvider;
     this.isGuest = customer.isGuest;
     this.isActive = customer.isActive;
+    this.mustChangePassword = customer.mustChangePassword;
     this.termsAcceptedAt = customer.termsAcceptedAt;
     this.privacyAcceptedAt = customer.privacyAcceptedAt;
     this.termsVersion = customer.termsVersion;

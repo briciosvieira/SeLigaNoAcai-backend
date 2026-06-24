@@ -614,6 +614,7 @@ export class AuthService {
       data: {
         passwordHash: newPasswordHash,
         refreshTokenHash: null,
+        mustChangePassword: false,
       },
     });
 
